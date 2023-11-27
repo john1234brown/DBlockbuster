@@ -12,3 +12,11 @@ This is the main branch just documenting What this service really is and what, i
 Will include Documentation for how A Browser Client Streamer would be attaching to this service and how to use it!
 
 Will include Documentation for how a Broadcaster and Provider would be attaching to this service and how to use it!
+
+
+
+We have our own file provider application for this service built in nodejs and electron 
+- please reach out to us if you have your own application you made that uses our service so we can link em here!
+- or you can post your application to our github here https://discord.gg/mXedka6A
+- https://github.com/john1234brown/DBlockbuster/tree/File-Provider-Electron-App
+
