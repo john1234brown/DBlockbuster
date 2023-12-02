@@ -1,3 +1,6 @@
+# These todos are from the old ipfs file providing application!
+## These can be ignored!
+
 * # Means its completed!
 * # Implement the new custom smee/replit listener!
 
