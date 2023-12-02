@@ -2,7 +2,6 @@ const http = require('node:http');
 const fs = require('node:fs');
 const { promises: Fs } = require('node:fs');
 const path = require('node:path');
-const SmeeClient = require('smee-client');
 const crypto = require('crypto');
 const WebSocket = require('ws');
 const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
@@ -11,14 +10,22 @@ var __newDirName;
 var p2pRunning = false;
 var pingEventReady = false;
 var providerId = generateMD5Checksum(Date.now()+ '-'+generateId());
+//This will be the easy to read and check incase our broadcastWorkers map set is to hard to forEach through and find out information etc..!
+var broadcasters = [];
+var eventsWebsocket;
+var messageDomainIndex = 0;
+var videoDomainIndex = 0;
+var messageDomains;
+var videoDomains;
+var messageSocket;
 class NewWorkerData {
   constructor(workerData) {
-    workerData = JSON.parse(workerData),
     this.socketUrl = workerData.socketUrl,
     this.threadIndex = workerData.threadIndex,
     this.filePath = workerData.filePath,
     this.providerId = workerData.providerId,
-    this.filetype = workerData.filetype,
+    this.providerName = configjson.providerUsername,
+    this.fileType = workerData.fileType,
     this.tmdbId = workerData.tmdbId,
     this.typeTvShowOrMovie = workerData.typeTvShowOrMovie,
     this.season = workerData.season,
@@ -32,7 +39,8 @@ class NewWorkerData {
       threadIndex: this.threadIndex,
       filePath: this.filePath,
       providerId: this.providerId,
-      filetype: this.filetype,
+      providerName: configjson.providerUsername,
+      fileType: this.fileType,
       tmdbId: this.tmdbId,
       typeTvShowOrMovie: this.typeTvShowOrMovie,
       season: this.season,
@@ -59,6 +67,22 @@ function generateId() {
   return Math.random().toString(36).substr(2, 9);
 }
 
+function s(input) {
+  if (typeof input !== 'string' && typeof input === 'number') {
+    input = input.toString().replace(/\\([0-9a-fA-F]{2})|[\x00-\x1F\x7F-\x9F]|\\u([0-9a-fA-F]{4})|['"|`]|\\/g, '');
+    return Number(input);
+  }
+
+  if (typeof input !== 'string' && typeof input === 'object') {
+    input = input.toString().replace(/\\([0-9a-fA-F]{2})|[\x00-\x1F\x7F-\x9F]|\\u([0-9a-fA-F]{4})|['"|`]|\\/g, '');
+    return Object(input);
+  }
+  if (input !== undefined || null){
+  input = input.replace(/\\([0-9a-fA-F]{2})|[\x00-\x1F\x7F-\x9F]|\\u([0-9a-fA-F]{4})|['"|`]|\\/g, '');
+  }
+  return input;
+}
+
 function startBroadcastWorker(workerData) {
   if (broadcastWorkers.size < 5) {
     var worker = new Worker(path.join(path.dirname(process.execPath), '/lib/broadcaster.js'), { workerData: workerData });
@@ -66,13 +90,57 @@ function startBroadcastWorker(workerData) {
     worker.on('error', (err) => { throw err; });
 
     worker.on('exit', () => {
+      //findBroadcaster()
       broadcastWorkers.delete(worker);
       console.log("Worker has exited.");
     });
 
-    worker.on('msg', (msg) => {
-      if (msg.type === 'broadcasterId') {
-        broadcastWorkers.set(worker, new NewWorkerData(msg.workerData));
+    worker.on('message', (msg) => {
+      try {
+        const jsonmsg = JSON.parse(msg);
+        console.log('GOT A MESSAGE FROM A WORKER THREADDDDDDDDDD!!!!!!!!!!!!!!@#@#@#@#@#,', jsonmsg);
+        if (jsonmsg.type === 'broadcasterId') {
+          console.log('BROADCASTER WORKER HAS SENT THERE BROADCASTER ID');
+          broadcastWorkers.set(worker, jsonmsg.workerData);
+        
+          const matchingBroadcaster = findBroadcasterByWorker(worker);
+
+          if (messageSocket.readyState === 1 && matchingBroadcaster) {
+            console.log('Message Socket Is is open sending BroadcasterReady message');
+            console.log('Matching Broadcaster:', matchingBroadcaster);
+          
+            const providerId = matchingBroadcaster.providerId;
+            const providerName = matchingBroadcaster.providerName;
+            const broadcasterId = matchingBroadcaster.broadcasterId;
+            const domain = matchingBroadcaster.socketUrl;
+            const tmdbId = matchingBroadcaster.tmdbId;
+            const reqSeason = matchingBroadcaster.season;
+            const reqType = matchingBroadcaster.typeTvShowOrMovie;
+            const reqEpisode = matchingBroadcaster.episode;
+            const reqQuality = matchingBroadcaster.quality;
+            const reqFileType = matchingBroadcaster.fileType;
+            const json  = {
+              connectionType: 'Provider',
+              messageType: 'BroadcasterReady',
+              providerId: providerId,
+              providerName: providerName,
+              broadcasterId: broadcasterId,
+              domain: domain,
+              tmdbId: tmdbId,
+              reqType: reqType,
+              reqSeason: reqSeason,
+              reqEpisode: reqEpisode,
+              reqQuality: reqQuality,
+              reqFileType: reqFileType
+            }
+            console.log(json);
+            messageSocket.send(JSON.stringify(json));
+          }
+        }else{
+          console.log(msg);
+        }
+      }catch(e){
+      console.log(e);
       }
     });
 
@@ -87,13 +155,6 @@ function startBroadcastWorker(workerData) {
     console.log("Maximum number of workers reached. Cannot start a new worker.");
   }
 }
-//This will be the easy to read and check incase our broadcastWorkers map set is to hard to forEach through and find out information etc..!
-var broadcasters = [];
-var eventsWebsocket;
-var messageDomainIndex = 0;
-var videoDomainIndex = 0;
-var messageDomains;
-var videoDomains;
 //HERE WE INITIALIZE ALL OF OUR VARIABLES TO THE EXECUTION FOLDER USING THE ./ directory path!
 //AND taking a file from the path.join(app.getAppPath(), 'filepath') and writing it to the ./ Directory if it doesn't exist!
 //This is basically responsible for handling multiple Operating systems!
@@ -273,7 +334,7 @@ function processMsg(msg) {
                         reqSeason: data.reqSeason,
                         reqEpisode: data.reqEpisode,
                         listoftypes: listOfTypes,
-                        domain: videoDomains.nodes[videoDomainIndex].domain
+                        domain: videoDomains[videoDomainIndex].domain
                       }
                       //console.log('WE HAVE IT FOuND IT WE SHOULD SUPPLY IT!');
                       respond(objToSend);
@@ -308,7 +369,7 @@ function processMsg(msg) {
                   id: data.id,
                   reqType: data.reqType,
                   listoftypes: listOfTypes,
-                  domain: videoDomains.nodes[videoDomainIndex].domain
+                  domain: videoDomains[videoDomainIndex].domain
                 }
                 console.log('WE HAVE IT FOuND IT WE SHOULD SUPPLY IT!');
                 //console.log('found', data.id);
@@ -462,110 +523,194 @@ async function processMsgBroadcast(msg) {
     console.log(e);
   }
 }
+/**
+ * Finds the broadcaster by the given worker.
+ * 
+ * @param {type} worker - The worker to search for in the broadcaster data.
+ * @return {type} The broadcaster data if a matching worker is found, otherwise null.
+ */
+function findBroadcasterByWorker(worker) {
+  const workerDataArray = Array.from(broadcastWorkers.entries());
 
+  const matchingWorkerData = workerDataArray.find(([currentWorker, workerData]) => {
+    return currentWorker === worker;
+  });
+
+  if (matchingWorkerData) {
+    return matchingWorkerData[1]; // Return the workerData object
+  } else {
+    return null; // Return null if no matching worker data found
+  }
+}
+/**
+ * Finds the broadcaster that matches the given criteria.
+ *
+ * @param {number} tmdbId - The TMDB ID of the TV show or movie.
+ * @param {number} season - The season number.
+ * @param {number} episode - The episode number.
+ * @param {string} typeTvShowOrMovie - The type of the TV show or movie.
+ * @param {string} quality - The desired quality of the broadcast.
+ * @param {string} filetype - The desired filetype of the broadcast.
+ * @return {object|null} The workerData object of the matching broadcaster, or null if no matching broadcaster found.
+ */
+function findBroadcaster(tmdbId, season, episode, typeTvShowOrMovie, quality, filetype) {
+  try {
+    // Convert map entries to array
+    const workerDataEntries = Array.from(broadcastWorkers.entries());
+
+    // Filter array based on criteria
+    const matchingBroadcasters = workerDataEntries.filter(([worker, workerData]) => {
+      return (
+        workerData.tmdbId === tmdbId &&
+        workerData.typeTvShowOrMovie === typeTvShowOrMovie &&
+        workerData.season === season &&
+        workerData.episode === episode &&
+        workerData.quality === quality &&
+        workerData.fileType === filetype
+      );
+    });
+
+    // Extract the first matching broadcaster (if any)
+    const matchingBroadcaster = matchingBroadcasters[0];
+    if (matchingBroadcaster) {
+      return matchingBroadcaster[1]; // Return the workerData object
+    } else {
+      return null; // Return null if no matching broadcaster found
+    }
+  } catch (error) {
+    console.error('Error in findBroadcaster:', error);
+    return null; // Return null in case of an error
+  }
+}
+
+async function startMessage(domain, port){
+  console.log('Starting Message Server');
+  const providerid = await generateMD5Checksum(Date.now() + generateId());
+  providerId = providerid;
+  console.log(providerId);
+  eventsWebsocket = new WebSocket('wss://'+domain+':'+port);
+  messageSocket = eventsWebsocket;
+  eventsWebsocket.on('open', () => {
+    console.log('Connected as a Broadcaster');
+    p2pRunning = true;
+    eventsWebsocket.send(JSON.stringify({
+      connectionType: 'Provider',
+      messageType: 'Initialize',
+      providerId: providerId,
+      providerUsername: configjson.providerUsername,
+      domain: videoDomains[videoDomainIndex].domain
+    }));
+  });
+  eventsWebsocket.on('message', async (msg) => {
+    try {
+      console.log('Got a message:', msg);
+      var json = JSON.parse(msg);
+      console.log(json);
+      if (json.messageType === 'Requesting') {
+       console.log('This is a request:', msg);
+       processMsg(msg);
+      }
+      
+      if (json.messageType === 'Request2Broadcast') {
+        console.log('We need to setup workerData');
+      
+        const processedResponse = await processMsgBroadcast(msg);
+      
+        if (processedResponse) {
+          if (broadcastWorkers.length >= 1) {
+            const matchingBroadcaster = findBroadcaster(
+              s(json.id),
+              s(json.reqSeason),
+              s(json.reqEpisode),
+              s(json.reqType),
+              s(json.reqQuality),
+              s(json.reqFileType)
+            );
+            if (matchingBroadcaster) {
+              console.log('We have a matching broadcaster:', matchingBroadcaster);
+              // Use the existing matchingBroadcaster object
+              const workerData = matchingBroadcaster;
+
+
+            } else {
+              // Start a new broadcast worker if no matching broadcaster exists
+              const workerData = {
+                socketUrl: `wss://${videoDomains[videoDomainIndex].domain.replace('http://', '').replace('https://', '')}`,
+                threadIndex: broadcastWorkers.length, // Increment thread index for new worker
+                filePath: processedResponse.filePath,
+                providerId: providerId,
+                providerName: configjson.providerUsername,
+                fileType: s(json.reqFileType),
+                tmdbId: s(json.id),
+                typeTvShowOrMovie: s(json.reqType),
+                season: s(json.reqSeason),
+                episode: s(json.reqEpisode),
+                quality: s(json.reqQuality),
+                appPath: app.getAppPath()
+              };
+          
+              console.log('WorkerData:', workerData);
+              startBroadcastWorker(workerData);
+            }
+          } else {//There are no workers so we must start one and start the thread index!
+            // Start a new broadcast worker since there are no existing workers
+            const workerData = {
+              socketUrl: `wss://${videoDomains[videoDomainIndex].domain.replace('http://', '').replace('https://', '')}`,
+              threadIndex: 0, // Initialize thread index for the first worker
+              filePath: processedResponse.filePath,
+              providerId: providerId,
+              providerName: configjson.providerUsername,
+              fileType: s(json.reqFileType),
+              tmdbId: s(json.id),
+              typeTvShowOrMovie: s(json.reqType),
+              season: s(json.reqSeason),
+              episode: s(json.reqEpisode),
+              quality: s(json.reqQuality),
+              appPath: app.getAppPath()
+            };
+          
+            console.log('WorkerData:', workerData);
+            startBroadcastWorker(workerData);
+          }
+        }//This is the end of our processed Response Undefined Check Here!
+      }//This is the end of our Request2Broadcast Check Here!
+    } catch (e) {
+      console.error(e);
+    }
+  });
+  console.log('Finished Executing StartMessage()');
+}
 
 //Still updating this Code!!!
 async function initializeP2P() {
   if (!p2pRunning) {
     if (configjson.websocket) {
-      console.log('WEbsocket set to true! p2p not running fetching status!')
-      await fetch('https://vervet-game-koi.ngrok-free.app/status-videos').then(response => response.json()).then((data) => {
-        console.log(data);
-        videoDomains = data;
-        console.log('Video Domains:', videoDomains);
-      }).catch(error =>{
-        console.log('Error fetching message status endpoints:', error);
-      });
-      fetch('https://vervet-game-koi.ngrok-free.app/status').then(response => response.json()).then( async (data) =>{
-      messageDomains = data;
-      //console.log('got data,',data);
-      //console.log(data.nodes[0].domain);
-      if (data.nodelength < 1) {
-        //console.log('No nodes found!');
-        return;
-      }else{
-        if (data.nodes.length >= 1){
-          /*
-          Here We will eventually implement a forEach Loop through all the data.nodes and find the one with the lowest provider connections!
-          But we need to update our Message Server and Video Servers to post to the gateway client counts to help make this a easier process via browser clients and provider here in this application manner!
-          */
-          //console.log('Nodes found:', data.nodes.length);
-          const providerid = await generateMD5Checksum(Date.now() + generateId());
-          providerId = providerid;
-          console.log(providerId);
-          console.log(data.nodes[0].domain);//For now this is basic example on how we can do this in the future we replace messageDomainIndex with the value of the foundIndex of the lowest value on again connected providers!
-          eventsWebsocket = new WebSocket('wss://'+messageDomains.nodes[messageDomainIndex].domain.replace('http://','').replace('https://','')+":"+messageDomains.nodes[messageDomainIndex].port);
-          eventsWebsocket.onopen = () => {
-          console.log('Connected as a Broadcaster');
-  
-          eventsWebsocket.send(JSON.stringify({
-            connectionType: 'Provider',
-            messageType: 'Initialize',
-            providerId: providerId,
-            providerUsername: configjson.providerUsername,
-            domain: configjson.domain
-          }));
-          eventsWebsocket.on('message', async (msg) => {
-            try {
-              console.log('Got a message:', msg);
-              var json = JSON.parse(msg);
-              console.log(json);
-              if (json.messageType === 'Requesting') {
-               console.log('This is a request:', msg);
-               processMsg(msg);
-              }
-              
-              if (json.messageType === 'Request2Broadcast'){
-                if (broadcastWorkers.length === undefined || broadcastWorkers.length === 0){
-                  //We need to setup workerData
-                  console.log('We need to setup workerData');
-                  //processMsgBroadcast(msg);
-                  const processedResponse = await processMsgBroadcast(msg);
-                  console.log('We have processedResponse:', processedResponse);
-                  console.log('We SEEEM TO BE STALLING HERE OH NO THIS IS NOT GOOD!');
-                  if (processedResponse){
-                    console.log('We have a response!:', JSON.stringify(processedResponse));
-                    console.log(videoDomains.nodes[videoDomainIndex].domain.replace('http://','').replace('https://',''));
-                    var workerData = {
-                      socketUrl: "wss://"+videoDomains.nodes[videoDomainIndex].domain.replace('http://','').replace('https://',''),
-                      threadIndex: 0,
-                      filePath: processedResponse.filePath,
-                      providerId: providerId,
-                      fileType: json.reqFileType,
-                      tmdbId: json.id,
-                      typeTvShowOrMovie: json.reqType,
-                      season: json.reqSeason,
-                      episode: json.reqEpisode,
-                      quality: json.reqQuality,
-                      appPath: app.getAppPath()
-                      };
-                      console.log('WorkerData:', workerData);
-                      startBroadcastWorker(workerData);
-                  }
-
-                }
-
-
-                if (broadcastWorkers.length >= 1){
-                  //Then we check to ensure not to duplicate a broadcast!
-                }
-                //realLog(json);
-                //realLog(broadcastWorkers.length);
-              }
-  
-            } catch (e) {
-              console.error(e);
-            }
-          });
-          p2pRunning = true;
-          };
+      let gatewayws = new WebSocket('wss://vervet-game-koi.ngrok-free.app');
+      gatewayws.on('open', () => {
+        console.log('Websocket Connected!');
+        var json = {
+          connectionType: 'client',
+          messageType: 'availability'
         }
-      }
-      }).catch(error =>{
-        console.log('Error fetching message status endpoints:', error);
+        gatewayws.send(JSON.stringify(json));
       });
+      gatewayws.on('message', async (event) => {
+        try{
+          var json = JSON.parse(event);
+          console.log(json);
+            if(json.messageType === 'availability'){
+              console.log('Gateway Availability:', json);
+              videoDomains = json.videoNodes;
+              messageDomains = json.nodes;
+              await startMessage(messageDomains[0].domain, messageDomains[0].port);
+              gatewayws.close();
+            }
+        }catch(e){
+          console.log(e);
+        }
+      });
+      
     }
-    //p2pRunning = true;
   }
 }
 

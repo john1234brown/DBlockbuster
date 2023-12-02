@@ -4,7 +4,7 @@
  "smee": false,
  "replit": true,
  "websocket": true,
- "openGUIOnStart": true,
+ "openGUIOnStart": false,
  "repoDir": "/mnt/hgfs/Streampal/Streampal/Repo",
  "listOfRootFolderNames": [
   "exampleRootFolder",
