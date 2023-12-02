@@ -1,5 +1,4 @@
-# These todos are from the old ipfs file providing application!
-## These can be ignored!
+## These todos are from the old ipfs electron file providing application scheme ill release the design scheme for that later on it isnt sufficent but useful snippets of code These can be ignored btw all of it below!
 
 * # Means its completed!
 * # Implement the new custom smee/replit listener!
