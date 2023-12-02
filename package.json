@@ -1,0 +1,17 @@
+{
+  "name": "wss",
+  "version": "1.0.0",
+  "description": "Websocket Server For movie and Tvshow sharing",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "John1234brown",
+  "license": "GPL-3.0",
+  "dependencies": {
+    "crypto": "^1.0.1",
+    "eventsource": "^2.0.2",
+    "express": "^4.18.2",
+    "path": "^0.12.7"
+  }
+}
