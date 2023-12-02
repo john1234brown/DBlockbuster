@@ -584,7 +584,7 @@ function findBroadcaster(tmdbId, season, episode, typeTvShowOrMovie, quality, fi
 }
 
 async function startMessage(domain, port){
-  console.log('Starting Message Server');
+  console.log('Starting Message Server Provider Client!');
   const providerid = await generateMD5Checksum(Date.now() + generateId());
   providerId = providerid;
   console.log(providerId);
