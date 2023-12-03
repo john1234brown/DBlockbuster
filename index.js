@@ -236,7 +236,26 @@ function getFolderSize(folderPath) {
   return totalSize;
 }
 
-const checkTmpFolderSize = async () => {
+async function checkNewFileTmpFolderSize(newFileSize){
+  try {
+    const folderSize = getFolderSize(tmpFolderPath);
+      console.log(folderSize, 'bytes');
+      if ((folderSize+newFileSize) > sizeLimitInBytes) {
+        console.log('Tmp folder size exceeds the limit of 10GB.');
+        return false;
+        //process.exit(1); // Exit with error code
+      } else {
+        console.log('Tmp folder size is within the limit.');
+        return true;
+        // Allow the build to proceed
+      }
+  } catch (error) {
+    console.error('Error checking tmp folder size:', error);
+    return undefined;
+    //process.exit(1); // Exit with error code
+  }
+};
+async function checkTmpFolderSize(){
   try {
     const folderSize = getFolderSize(tmpFolderPath);
       console.log(folderSize, 'bytes');
@@ -283,12 +302,22 @@ async function storeFullVideoData(broadcasterId, data) {
     return;
   }
   if (TmpFoldersize === true){
-  fullVideoData[broadcasterId] = data;
+  //fullVideoData[broadcasterId] = data;
+
   const fileName = broadcasterId + ".mp4";
   const fileStream = fs.createWriteStream("./tmp/" + fileName);
   console.log("Writing to file: ./tmp/" + fileName);
-  fileStream.write(data);
-  fileStream.end();
+  await new Promise((resolve, reject) => {
+    fileStream.write(data);
+    fileStream.on('finish', () =>{
+      console.log("Finished writing to file: ./tmp/" + fileName);
+      fileStream.end();
+      resolve();
+    });
+    fileStream.on('error', reject);
+  });
+  delete dataObject[broadcasterId];
+  delete data;
   return;
   }
 }catch(error){
@@ -313,6 +342,11 @@ async function sendForwardStreamMessage(ws, messageData) {
         //console.log(chunkData.data);
         console.log('metaData: ', rekt(chunkData.metaData));
         console.log('Timestamp: ', rekt(chunkData.timestamp));
+        const totalChunks = rekt(chunkData.totalIndex);
+        // each chunk is average (10 ** 6) / 4 = 250,000 bytes so we will caclulate this here!
+        const chunkSize = 10 ** 6 / 4;
+        const totalSize = chunkSize * totalChunks;
+        //console.log(totalChunks);
 
 
         // Check if the broadcaster ID exists in dataObject
@@ -351,7 +385,19 @@ async function sendForwardStreamMessage(ws, messageData) {
           console.log('Im still executing!');
 
           // Wait for the full video data to be stored in the cache
-          await storeFullVideoData(broadcasterId, fullVideoBuffer);
+          if (checkNewFileTmpFolderSize(fullVideoBuffer.byteLength) === true){
+            storeFullVideoData(broadcasterId, fullVideoBuffer);
+            //console.log('New File Size is within the limit.');
+            //Here we can start building the file for this broadcaster! by piece by piece instead of using up cache memory! and buffer memory!
+            //What we will do is piece the file together utilizing filestreams!
+            //storeFullVideoData(broadcasterId, chunkData.data);
+          }else{
+            console.log('New File Size is too large.');
+            console.log('Clearing from cache!');
+            delete dataObject[broadcasterId];
+            delete fullVideoBuffer;
+            ws.send(JSON.stringify({ type: 'FileTooLargeError'}));
+          }
 
           console.log('Not anymore!');
 
