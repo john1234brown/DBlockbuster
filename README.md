@@ -1,5 +1,8 @@
 # D-Blockbuster
 
+![CM-Badge-2](https://github.com/john1234brown/DBlockbuster/assets/8825800/73d28004-844d-4fb3-a99b-695ba9739d98)
+
+
 Programmed in NodeJS
 
 Electron File Providing Application for DBlockbuster
