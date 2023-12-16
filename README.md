@@ -7,7 +7,11 @@ Programmed in NodeJS
 
 Consisting of Three Branches for the 2 Servers the gateway is provided by DBlockbuster.
 
-The Video Relay Server and Message Relay Server this is a single server node that can be, Peer Hosted with proper port forwarding, but we recommend hosting on a vps!
+The Video Relay Server and Message Relay Server this is a single server node that can be, Peer Hosted with proper port forwarding, but we recommend hosting on a vps! 
+
+If you don't have your own domain and ssl certs don't worry we generate a subdomain for your video relay server on authentication of server files!
+
+Also you can utilize the bring your own domain where can configure the node server your domain and port and use a cloudflare tunnel which this port would be 443 we will include tutorials for these as for setting up cloudflare tunnel please refer to cloudflares documentations for setting up the tunnel please forward the cloudflare tunnel to localhost:8443 instead of localhost:5000!
 
 This is the main branch just documenting What this service really is and what, its about the other 3 branches will go more in depth on each of the server and gateway systems along with the file provider electron application! And there own documentation can be found on there branch!
 
