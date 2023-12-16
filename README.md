@@ -1,4 +1,5 @@
 # D-Blockbuster
+This is still a [WIP] Project I personally thank you for being patient.
 A Decentralized Peer To Peer Movie and TV Show Streaming Relay Service that supports modern day browsers by passing uint8array of the video data in chunks with custom reconstructor to properly construct in proper ordering!
 
 Programmed in NodeJS
