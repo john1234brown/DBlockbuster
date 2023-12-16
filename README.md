@@ -1,4 +1,8 @@
 # D-Blockbuster
+
+![CM-Badge-2](https://github.com/john1234brown/DBlockbuster/assets/8825800/9629ebb4-bdca-4195-973b-1761cca970ad)
+
+
 This is still a [WIP] Project I personally thank you for being patient.
 
 A Decentralized Peer To Peer Movie and TV Show Streaming Relay Service that supports modern day browsers by passing uint8array of the video data in chunks with custom reconstructor to properly construct in proper ordering!
