@@ -16,7 +16,8 @@ Will include Documentation for how a Broadcaster and Provider would be attaching
 
 
 We have our own file provider application for this service built in nodejs and electron 
-- please reach out to us if you have your own application you made that uses our service so we can link em here!
-- or you can post your application to our github here https://discord.gg/mXedka6A
-- https://github.com/john1234brown/DBlockbuster/tree/File-Provider-Electron-App
+- please reach out to us if you have your own application you plan on making for this service as we would have to collaborate to work on a secure authentication process!
 
+- We have a community Discord feel free to join it at any time! https://discord.com/invite/3yay8rnyyD
+
+- We have a movie and tv show provider application made in electron that allows anyone to provide there local video files to a peer in the browser through our the DBlockbuster Peer Hosted Relay Servers! https://github.com/john1234brown/DBlockbuster/tree/File-Provider-Electron-App
