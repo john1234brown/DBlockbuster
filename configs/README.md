@@ -3,44 +3,44 @@
 
 
 # Method 1 The Preferred method for average users! That Have a domain!
-  # First you will want to go over to cloudflare Tunnels and generate you a tunnel go to this page!
+  - First you will want to go over to cloudflare Tunnels and generate you a tunnel go to this page!
   https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/get-started/create-remote-tunnel/
-  # Follow there tutorial for setting up the tunnel but instead of localhost:8000 make it localhost:8443
-  # Set your config.json file domain to the tunnels domain location and set the port to what you set the localhost port to in the tunnel setup!
-  # Now you need to enable the usingCloudflareTunnel option config.json to true 
-  # and set the useGeneratedSubDomain to false in the config.json file!
-  # Now first run this in terminal or command prompt in the folder where you have the index.js file and package.json files!
-  # npm install
-  # then you can run this in terminal or command prompt in this folder not the configs but where you have the index.js file and package.json files!
-  # node index.js
-  # now you are serving a video relay server without the need to portforward the only requirement is to have your own domain already!
+  - Follow there tutorial for setting up the tunnel but instead of localhost:8000 make it localhost:8443
+  - Set your config.json file domain to the tunnels domain location and set the port to what you set the localhost port to in the tunnel setup!
+  - Now you need to enable the usingCloudflareTunnel option config.json to true 
+  - and set the useGeneratedSubDomain to false in the config.json file!
+  - Now first run this in terminal or command prompt in the folder where you have the index.js file and package.json files!
+  - npm install
+  - then you can run this in terminal or command prompt in this folder not the configs but where you have the index.js file and package.json files!
+  - node index.js
+  - now you are serving a video relay server without the need to portforward the only requirement is to have your own domain already!
 
 
 # Method 2 For more network and tech savy users! That Have a Domain!
-  # If you have your own domain then you can setup the domain and port to whichever you please if you are proxied through cloudflare you need to be sure to use there ports they allow to proxy they have a public list of them on there documentations page here
+  - If you have your own domain then you can setup the domain and port to whichever you please if you are proxied through cloudflare you need to be sure to use there ports they allow to proxy they have a public list of them on there documentations page here
   https://developers.cloudflare.com/fundamentals/reference/network-ports/!
-  # Now if you're serving through your own domain please be sure to know how to portforward and firewall rules to only allow from cloudflare IP address list ranges they have a documentation page for this as well which can be found here
+  - Now if you're serving through your own domain please be sure to know how to portforward and firewall rules to only allow from cloudflare IP address list ranges they have a documentation page for this as well which can be found here
   https://www.cloudflare.com/ips/
-  # Also documentation on cloudflares firewall rule creation can be seen here this is for linux though so be advised might need to look up youtube video for how to accomplish on windows if your on windows!
+  - Also documentation on cloudflares firewall rule creation can be seen here this is for linux though so be advised might need to look up youtube video for how to accomplish on windows if your on windows!
   https://developers.cloudflare.com/fundamentals/setup/allow-cloudflare-ip-addresses/#main
-  # All these listed above about cloudflare are important practices to take if you want to host from your own domain!
-  # You will need to update the config.json file to useGeneratedSubDomain to false
-  # Then you will have to set what your domain in the config.json file be sure to check with the configReadME.md for more information
-  # Now you will need to set the port which you have forwarded and such in the config.json file as well 
-  # Now first run this in terminal or command prompt in the folder where you have the index.js file and package.json files!
-  # npm install
-  # then you can run this in terminal or command prompt in this folder not the configs but where you have the index.js file and package.json files!
-  # node index.js
-  # now you are serving a video relay server with portforwarding and using your own domain!
+  - All these listed above about cloudflare are important practices to take if you want to host from your own domain!
+  - You will need to update the config.json file to useGeneratedSubDomain to false
+  - Then you will have to set what your domain in the config.json file be sure to check with the configReadME.md for more information
+  - Now you will need to set the port which you have forwarded and such in the config.json file as well 
+  - Now first run this in terminal or command prompt in the folder where you have the index.js file and package.json files!
+  - npm install
+  - then you can run this in terminal or command prompt in this folder not the configs but where you have the index.js file and package.json files!
+  - node index.js
+  - now you are serving a video relay server with portforwarding and using your own domain!
 
 
 # Method 3 For more network and tech savy users! That don't have a domain!
-  # Using a subdomain generated by us!
-  # this is the same as method 2 the only exception is the port will automatically be 8443 that you need to forward and the domain will automatically be provided by us!
-  # This is the same as Method 2 with having to take proper precautions using cloudflare proxy ip's to only be allowed through to your network port forwarding!
-  # Leave the config.json file the way it is and it will properly do this method!
-  # Now first run this in terminal or command prompt in the folder where you have the index.js file and package.json files!
-  # npm install
-  # then you can run this in terminal or command prompt in this folder not the configs but where you have the index.js file and package.json files!
-  # node index.js
-  # now you are serving a video relay server with portforwarding without the need for a domain!
+  - Using a subdomain generated by us!
+  - this is the same as method 2 the only exception is the port will automatically be 8443 that you need to forward and the domain will automatically be provided by us!
+  - This is the same as Method 2 with having to take proper precautions using cloudflare proxy ip's to only be allowed through to your network port forwarding!
+  - Leave the config.json file the way it is and it will properly do this method!
+  - Now first run this in terminal or command prompt in the folder where you have the index.js file and package.json files!
+  - npm install
+  - then you can run this in terminal or command prompt in this folder not the configs but where you have the index.js file and package.json files!
+  - node index.js
+  - now you are serving a video relay server with portforwarding without the need for a domain!
