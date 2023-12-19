@@ -1,243 +1,746 @@
-const express = require('express');
-/*const bodyParser = require('body-parser');*/
-const cors = require('cors');
+const express = require("express");
+const cors = require("cors");
+const fs = require("node:fs");
+const http = require("https");
+const WebSocket = require("ws");
+const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
+const path = require("path");
+const fastDeepEqual = require('fast-deep-equal');
+const isEqual = require('lodash/isEqual');
+const { cleanUpCloudFlareAndExit, cloudFlareInit, generateSubDomain } = require("./utilities/cloudflare");
+//cloudFlareInit();
+const CloudFlareDB = require('./utilities/db.js');
+const { Worker } = require("node:worker_threads");
+const { CheckIP, CheckNodeIP } = require('./utilities/ratelimit.js');
 
+function startCloudFlareWaitListWorker() {
+  const worker = new Worker(path.join(process.cwd(), 'utilities', 'cloudflareWaitList.js'));
+  worker.on('error', (err) => {
+    console.log(err);
+    worker.terminate();//Stop current worker!
+  });
+  worker.on('exit', () => {
+    //Restart the worker on exit! most likely crashed on error!
+    startCloudFlareWaitListWorker();
+  });
+
+  worker.on('message', (msg) => {
+    try {
+      const data = JSON.parse(msg);
+      switch (data.type){
+        case 'success':
+          //Here we process the returned message and process the queued ITEMS!
+
+          break;
+        case 'failed':
+          //Here we process the failed generate and close this node connection! let them know to retry!
+
+          break;
+      }
+
+    }catch(e){
+      console.log(e);
+    }
+  })
+}
+startCloudFlareWaitListWorker();
+//require('dotenv').config();
+// readFileSync function must use __dirname get current directory
+// require use ./ refer to current directory.
+const options = {
+  key: fs.readFileSync('key.pem'),
+  ca: fs.readFileSync('rsaroot.pem'),
+ cert: fs.readFileSync('cert.pem')
+};
+
+// Gateway Key Pair
+const gatewayKeyPair = crypto.generateKeyPairSync("rsa", {
+  modulusLength: 2048,
+  publicKeyEncoding: { type: "spki", format: "pem" },
+  privateKeyEncoding: { type: "pkcs8", format: "pem" },
+});
+
+// Store Node Public Keys (for simplicity, use an object; in a real scenario, use a database)
+var nodePublicKeys = [];
 const app = express();
-app.use(cors('*'));
 app.use(express.json());
-/*app.use(bodyParser.urlencoded({ extended: false }));*/
+app.use(cors('*'));
 
-app.get('/status', (request, response) => response.send(JSON.stringify({ nodes: nodesStatus, nodeslength: nodesStatus.length })));
-app.get('/status-videos', (request, response) => response.send(JSON.stringify({ nodes: videonodesStatus, nodeslength: videonodesStatus.length })));
 
-const PORT = 8080;
+const server = http.createServer(options, app);
+const wss = new WebSocket.Server({ server });
 
+const PORT = 8443; //For cloudflare support!
+//Nodes are the message servers
 var nodes = [];
+//This is responsible for generating our status response!
 var nodesStatus = [];
+var lazyProvidersStatus = []; //Here we utilize this to keep track of the lazy providers storage status and what node there attached to!
 var videonodes = [];
 var videonodesStatus = [];
-var factsOther = { msg: 'This is a gateway event stream provided by StreamPal! For the msgs to be relayed from nodes and other gateway points!' };
+var fileHashes = [];
+var file2Hashes = [];
+/*
+ * This will be for the api requesters gateway point later on to be implemented
+ * to make a true api access point for the whole system! We will be using this for our movie site!
+ * Also Website Developers can choose to use there own message nodes as access points for their websites!
+ * So they can easily integrate their websites with the DBlockbuster system!
+ * They can still get the proper relayed data from the Gateway! from other nodes!
+ * Without bogging down the whole system by going through their own message nodes instead of the gateway like we will be doing!
+ */ var requesters = []; //We might implement this in the future! for now they can just use there own message node for there website!
+var waitlist = [];
+const FACTSOTHER = {
+  msg: "This is a websocket gateway provided by DBlockbuster! For the msgs to be relayed from nodes to streamers and vice versa!",
+};
 
-function rekt(text) {
-  // Replace all escape sequences with their corresponding unescaped characters
-  const escapeSequences = {
-    '\\"': '"',
-    '\\\'': '\'',
-    '\\\\': '\\',
-    '\\n': '\n',
-    '\\r': '\r',
-    '\\t': '\t',
-    '\\b': '\b',
-    '\\f': '\f',
-    '\\v': '\v',
-    '\\0': '\0',
+
+function deepReplaceEscapeSequences(input) {
+  if (Array.isArray(input)) {
+    return input.map(deepReplaceEscapeSequences);
+  } else if (typeof input === 'object') {
+    return Object.keys(input).reduce((acc, key) => {
+      acc[key] = deepReplaceEscapeSequences(input[key]);
+      return acc;
+    }, {});
+  } else if (input !== undefined && input !== null) {
+    return input.toString().replace(/\\([0-9a-fA-F]{2})|[\x00-\x1F\x7F-\x9F]|\\u([0-9a-fA-F]{4})|[|`]|\\/g, '');
+  } else {
+    return input; // Return input as-is if it's undefined or null
+  }
+}
+/**
+ * Takes an input and performs various transformations based on its type.
+ * to ensure proper sanitization of the input by removing all potential escape characters!
+ * @param {any} input - The input value to be transformed.
+ * @return {any} - The transformed value.
+ */
+function s(input) {
+  if (typeof input !== 'string' && typeof input === 'number') {
+    // Handle numeric input
+    input = input.toString().replace(/\\([0-9a-fA-F]{2})|[\x00-\x1F\x7F-\x9F]|\\u([0-9a-fA-F]{4})|[|`]|\\/g, '');
+    return Number(input);
+  }
+
+  // Handle arrays
+  if (Array.isArray(input)) {
+    return deepReplaceEscapeSequences(input);
+  }
+
+  // Handle objects
+  if (typeof input === 'object') {
+    return deepReplaceEscapeSequences(input);
+  }
+
+  // Handle non-object input
+  if (input !== undefined || null) {
+    input = input.toString().replace(/\\([0-9a-fA-F]{2})|[\x00-\x1F\x7F-\x9F]|\\u([0-9a-fA-F]{4})|[|`]|\\/g, '');
+  }
+
+  return input;
+}
+
+function scrambleFiles(files, indices) {
+  return new Promise((resolve, reject) => {
+    try {
+      indices.forEach((index, i) => {
+        const otherIndex = indices[(i + 1) % indices.length];
+        [files[index], files[otherIndex]] = [files[otherIndex], files[index]];
+      });
+
+      resolve(files);
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+function scrambleFilesSync(files, indices) {
+  try {
+    indices.forEach((index, i) => {
+      const otherIndex = indices[(i + 1) % indices.length];
+      [files[index], files[otherIndex]] = [files[otherIndex], files[index]];
+    });
+
+    return files;
+  } catch (error) {
+    console.log(error);
+    //throw error;
+  }
+}
+async function readFilesRecursively(folder, fileList = []) {
+  try {
+    //console.log('Reading File Path:', folder);
+    const files = await fs.promises.readdir(folder);
+
+    for (const file of files) {
+      const filePath = path.join(folder, file);
+      //console.log(filePath);
+      const stats = await fs.promises.stat(filePath);
+
+      if (stats.isDirectory()) {
+        // If the current item is a directory, recursively call the function
+        await readFilesRecursively(filePath, fileList);
+      } else if (stats.isFile()) {
+        // If the current item is a file, add its path to the array
+        fileList.push(filePath);
+      }
+    }
+    fileList = fileList.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    return fileList;
+  } catch (error) {
+    console.error('Error reading files:', error);
+    //throw error; // Rethrow the error to handle it elsewhere if needed
+  }
+}
+
+async function calculateHash(filePath) {
+  try {
+    // Read file asynchronously
+    const data = await fs.promises.readFile(filePath);
+
+    // Calculate hash
+    const hash = crypto.createHash('sha256');
+    hash.update(data);
+
+    // Return the hash value
+    return hash.digest('hex');
+  } catch (error) {
+    // Handle errors, e.g., file not found, etc.
+    console.log(error);
+    //throw new Error(`Error calculating hash for file ${filePath}: ${error.message}`);
+  }
+}
+
+async function calculateCombinedHash() {
+  try {
+  const fileList = await readFilesRecursively(path.join(__dirname, 'LocalTest'));
+  //console.log(execpath);
+  // Read all files in the directory
+  //const files = await readFilesRecursively(__dirname);
+  const execFiles = await readFilesRecursively(path.join(__dirname, 'LocalTest', 'node_modules'));
+  //console.log('Files amount!', fileList.length);
+  //console.log('Sub Files amount!', execFiles.length);
+  // Calculate hash for each file (excluding the specified folder)
+  const calculateAndSortHashes = async (files) => {
+    const hashes = [];
+    for (const file of files) {
+      const filePath = path.join(file);
+      if (fs.statSync(filePath).isFile() && !filePath.includes("tmp") && !filePath.includes('certs') && !filePath.includes('configs')) {
+        const fileHash = await calculateHash(filePath);
+        hashes.push(fileHash);
+      }
+    }
+    return hashes.sort();
   };
 
-  const regex = new RegExp('(\\\\)[\\"|\'|\\]|\\n|\\r|\\t|\\b|\\f|\\v|\\0]', 'g');
-  if (typeof text !== 'string' && typeof text === 'number') {
-    //throw new Error('text must be a string');
-    var test = text.toString().replace(regex, (match, escapedCharacter) => escapeSequences[escapedCharacter]);
-    //Number(test);
-    return Number(test);
-  }
-  return text.toString().replace(regex, (match, escapedCharacter) => escapeSequences[escapedCharacter]);
-}
+  const fileHashes = await calculateAndSortHashes(fileList);
+  const file2Hashes = await calculateAndSortHashes(execFiles);
 
-app.listen(PORT, () => {
-  console.log(`Facts Events service listening at http://localhost:${PORT}`)
-})
+  // Combine hashes into a single string and calculate hash
+  const combinedHash = crypto.createHash('sha256');
+  combinedHash.update(fileHashes.join(''));
+  //console.log('Amount of Hashes!',fileHashes.length);
+  const execHash = crypto.createHash('sha256');
+  execHash.update(file2Hashes.join(''));
 
-function eventsNodeHandlerCatch(request, response, next) {
-  try {
-    //Here we dont do the full sanitization check just mostly can do intercept checkIP to add ip throttling along with ensuring or catching maximum amount of clients to be actively listening to the server at once!
-    if (nodes.length <= 99999) {
-      eventsNodeHandler(request, response, next);
-    } else {
-      response.status(429);
-    }
-  } catch (e) {
+  const answer = {
+    firstHash: combinedHash.digest('hex'),
+    secondHash: fileHashes,
+    thirdHash: execHash.digest('hex'),
+    fourthHash: file2Hashes,
+  };
+
+  console.log('Amount of Hashes!', fileHashes.length);
+  console.log('Amount2 of Hashes!', file2Hashes.length);
+  return answer;
+  //return combinedHash.digest('hex');
+  //return;
+  }catch(e){
     console.log(e);
   }
 }
-//This is the channel provided by the gateway to link all the nodes together! which allows providers to listen to just one node and be able to cross communicate with other nodes etc... along with request and provide!
-function eventsNodeHandler(request, response, next) {
-  try {
-    const url = request.query.url;
-    const port = request.query.port;
-    if (url && port) {
-      const headers = {
-        'Content-Type': 'text/event-stream',
-        'Connection': 'keep-alive',
-        'Cache-Control': 'no-cache'
-      };
-      response.writeHead(200, headers);
+//To generate scramble! if we are doing scramble challenge!
+function getRandomNumber() {
+  return Math.floor(Math.random() * 1719); // 0 to 1719 (inclusive)
+}
+function getRandomNumber2() {
+  return Math.floor(Math.random() * 1711); // 0 to 1711 (inclusive)
+}
+function getRandomChallenge(){
+  return Math.floor(Math.random() * 4); // 0 to 3 (inclusive) 4 different types of challenges!
+}
+function getRandomCount(start, end){
+  return Math.floor(Math.random() * (end-start+1))+start;
+}
+function generateRandomRange(start, end, count) {
+  return Array.from({ length: count }, () => Math.floor(Math.random() * (end - start + 1)) + start);
+}
+// Function to generate a challenge
+function generateChallenge() {
+  const type = getRandomChallenge();
+  var c1 = [];
+  var c2 = [];
+  switch (type){
+    case 0:
+      c1 = generateRandomRange(0, getRandomNumber(), getRandomCount(50, 100)); // { 1, 50, 30, 55, 556 }
+      c2 = generateRandomRange(0, getRandomNumber2(), getRandomCount(50, 100));// { 5, 54, 43, 66, 345 }
+    break;
+    case 1:
+      //We will generate a random number of times on how many times we want them to scramble it!
+      c1 = generateRandomRange(0, getRandomNumber(), getRandomCount(400, 100));
+      c2 = generateRandomRange(0, getRandomNumber2(), getRandomCount(400, 100));
+    break;
+    case 2:
+      //We will generate a random number of times on how many times we want them to scramble it!
+      c1 = generateRandomRange(0, getRandomNumber(), getRandomCount(800, 400));
+      c2 = generateRandomRange(0, getRandomNumber2(), getRandomCount(800, 400));
+    break;
+    case 3:
+      //We will generate a random number of times on how many times we want them to scramble it!
+      c1 = generateRandomRange(0, getRandomNumber(), getRandomCount(1200, 800));
+      c2 = generateRandomRange(0, getRandomNumber2(), getRandomCount(1200, 800));
+    break;
+    case 4:
+      c1 = generateRandomRange(0, getRandomNumber(), getRandomCount(2400, 1200));
+      c2 = generateRandomRange(0, getRandomNumber2(), getRandomCount(2400, 1200));
+    break;
+  }
 
-      const randId = Math.random().toString().slice(2, 11);
-      const clientId = Date.now() + randId;
-      var factNewOther = {
-        type: 'authenticated',
-        nodeId: clientId,
-        domain: url,
-        port: port,
-        msg: factsOther.msg
+  const end = {
+    c: c1,
+    c2: c2
+  }
+  
+  return end;
+}
+//Incomplete verion of the challenge!
+async function generateAnswer(challenge){
+  const c1 = challenge.c;
+  const c2 = challenge.c2;
+
+  const Hashes = await calculateCombinedHash();
+
+  const c1Hashes = Hashes.secondHash;
+  const c2Hashes = Hashes.fourthHash;
+
+  const a1Hashes = await scrambleFiles(c1Hashes, c1);
+  const a2Hashes = await scrambleFiles(c2Hashes, c2);
+  const combinedHash = crypto.createHash('sha256');
+  combinedHash.update(a1Hashes.join(''));
+  const firstHash = combinedHash.digest('hex');
+  const combinedHash2 = crypto.createHash('sha256');
+  combinedHash2.update(a2Hashes.join(''));
+  const thirdHash = combinedHash2.digest('hex');
+  const answer = {
+    firstHash: firstHash,
+    secondHash: a1Hashes,
+    thirdHash: thirdHash,
+    fourthHash: a2Hashes
+  }
+  return answer;
+}
+
+function verifyNodeResponse(nodeId, signedResponse) {
+  try {
+    const nodePublicKey = nodePublicKeys[nodeId].publicKey;
+    const decoded = jwt.verify(signedResponse, nodePublicKey, {
+      algorithm: "RS256",
+    });
+    console.log('Fast Deep Equal New Checksum:', fastDeepEqual(Object(decoded.challenge.checksum), Object(nodePublicKeys[nodeId].checksum)));
+    console.log('Fast Deep Equal New Checksum Using same as scramble:', fastDeepEqual(decoded.challenge.checksum, nodePublicKeys[nodeId].checksum));
+    console.log('Additional New Checksum:', isEqual(Object(decoded.challenge.checksum), Object(nodePublicKeys[nodeId].checksum)));
+    console.log('Additional New Checksum Using same as scramble:', isEqual(decoded.challenge.checksum, nodePublicKeys[nodeId].checksum));
+    console.log('Decoded Checksum: is saving to file!:');
+    //fs.writeFileSync('./tmpchecksumAnswer.json', JSON.stringify(nodePublicKeys[nodeId].checksum, null, 2));
+    //fs.writeFileSync('./tmpchecksum.json', JSON.stringify(decoded.challenge.checksum, null, 2));
+    //console.log('Saving answer checksum:');
+    //fs.writeFileSync('./tmpscrambleans.json', JSON.stringify(nodePublicKeys[nodeId].answer, null, 2));
+    //fs.writeFileSync('./tmpcheckscrambleanswer.json', JSON.stringify(decoded.challenge.scrambled, null, 2));
+    console.log('Scramble: ', isEqual(decoded.challenge.scrambled, nodePublicKeys[nodeId].answer));
+    if (isEqual(decoded.challenge.checksum, nodePublicKeys[nodeId].checksum)){
+      console.log('Valid Client!');
+      if (isEqual(decoded.challenge.scrambled, nodePublicKeys[nodeId].answer)){
+        console.log('Valid Scramble! Valid Client!');
+        return true;
       }
-      var data2 = `data: ${JSON.stringify(factNewOther)}\n\n`;
+    }
+    return false;
+  } catch (error) {
+    console.log(error);
+    return false; // Failed JWT verification
+  }
+}
 
-      response.write(data2);
-      //const newFact = JSON.parse(request.body);
+wss.on("connection", (ws, request) => {
+  // Access the Headers from the Initial HTTP Request
+  const headers = request.headers;
+  ws.xForwardedForIP = headers['x-forwarded-for'];
+  ws.cFConnectingIP = headers['cf-connecting-ip'];
+  if (headers['cf-pseudo-ipv4']){
+    ws.ipv4 = headers['cf-pseudo-ipv4'];
+  }else {
+    ws.ipv4 = headers['cf-connecting-ip'];
+  }
+  console.log(headers);
+  
+  ws.on("message", async (message) => {
+    try {
+      const newFact = JSON.parse(message);
       //console.log(newFact);
-      //console.log(request.body);
-      const newClient = {
-        id: clientId,
-        domain: url,
-        port: port,
-        response
-      };
+      switch (newFact.connectionType) {
+        case "node":
+          if (newFact.messageType === 'handshake' || newFact.messageType === 'response' || newFact.messageType === 'Initialize'){
+            const safetyCheck = CheckNodeIP(ws.ipv4);
+            if (safetyCheck === false){
+              //Do Nothing allow them to continue!
+            }
+            if (safetyCheck === true){
+              ws.close();
+            }
+          }
+          switch (newFact.messageType) {
+            case "handshake":
+              console.log('Handshake started!');
+              ws.verified = false;
+              const randId = Math.random().toString().slice(2, 11);
+              const clientId = Date.now() + randId;
+              ws.clientId = clientId;
+              const nodePublicKey = newFact.publicKey;
+              //Generate Checksum For verification!
+              const checksum = await calculateCombinedHash();
+              //fs.writeFileSync('./checksum.json', JSON.stringify(checksum, null, 2));
+              // Generate a challenge for the node!
+              const challenge = generateChallenge();
+              //console.log('The Challenge IS:',challenge);
+              const answer = await generateAnswer(challenge);
+              //console.log('The answer IS:', answer);
+              // Save Node's Public Key and Challenge for future verification
+              nodePublicKeys[clientId] = {
+                publicKey: nodePublicKey,
+                response: process.env.key,
+                challenge: challenge,
+                answer: answer,
+                checksum: checksum
+              };
 
-      nodes.push(newClient);
-      nodesStatus.push({
-        id: clientId,
-        domain: url,
-        port: port,
-        status: 'connected'
-      })
+              // Example: Send the challenge to the node
+              ws.send(
+                JSON.stringify({
+                  connectionType: "gateway",
+                  messageType: "challenge",
+                  challenge: challenge
+                })
+              );
+              break;
+            case "response":
+              // Verify the response from the node
+              const nodeId = ws.clientId;
+              const signedResponse = newFact.signedResponse;
 
-      request.on('close', () => {
-        console.log(`${clientId} Connection closed`);
-        nodes = nodes.filter(client => client.id !== clientId);
-        nodesStatus = nodesStatus.filter(client => client.id !== clientId);
-      });
-    }
-  } catch (e) {
-    console.log(e);
-  }
-}
-function eventsVideoNodeHandlerCatch(request, response, next) {
-  try {
-    //Here we dont do the full sanitization check just mostly can do intercept checkIP to add ip throttling along with ensuring or catching maximum amount of clients to be actively listening to the server at once!
-    if (nodes.length <= 99999) {
-      eventsVideoNodeHandler(request, response, next);
-    } else {
-      response.status(429);
-    }
-  } catch (e) {
-    console.log(e);
-  }
-}
-//This is the channel provided by the gateway to link all the nodes together! which allows providers to listen to just one node and be able to cross communicate with other nodes etc... along with request and provide!
-function eventsVideoNodeHandler(request, response, next) {
-  try {
-    const url = s(request.query.url);
-    const port = s(request.query.port);
-    if (url && port) {
-      const headers = {
-        'Content-Type': 'text/event-stream',
-        'Connection': 'keep-alive',
-        'Cache-Control': 'no-cache'
-      };
-      response.writeHead(200, headers);
+              if (verifyNodeResponse(nodeId, signedResponse)) {
+                // Continue with the connection
+                // ...
+                ws.verified = true; // Set the connection to verified! this way we can allow them to move forward!
+                console.log("Connection verified");
+                // Example: Send an acknowledgment
+                ws.send(
+                  JSON.stringify({
+                    connectionType: "gateway",
+                    messageType: "handshake_ack",
+                  })
+                );
+              } else {
+                // Handle unauthorized node
+                console.log("Unauthorized node");
+                ws.close();
+              }
+              break;
+            case "Initialize":
+              //eventsNodeHandler(newFact);
+              console.log('Client ID:', ws.clientId);
+              console.log('Initialize Check:', fastDeepEqual(newFact.key, nodePublicKeys[ws.clientId].checksum));
+              if (
+                ws.verified === true && fastDeepEqual(nodePublicKeys[ws.clientId].checksum, newFact.key)
+              ) {
+                if (newFact.domain === (null || undefined) && newFact.port === (null || undefined)) {
+                  console.log('Valid Key passed on Initialization! They are requesting for subdomain as they didnt provide one lets put them in the waitlist to be generated!');
+                  const randId = Math.random().toString().slice(2, 11);
+                  const clientId = Date.now() + randId;
+                  ws.clientId = clientId;
+                  const result = CloudFlareDB.prepare('INSERT INTO "waitList"("clientId","clientIp","providers","requesters","broadcasters","streamers") VALUES (?,?,?,?,?,?)').run(clientId, ws.ipv4, s(newFact.providersAmount), s(newFact.requestersAmount), s(newFact.broadcastersAmount), s(newFact.streamersAmount));
+                  const lastInsertRowId = result.lastInsertRowid;
+                  //^ added the client to the db! waitlist!
+                  var factNewOther = {
+                    type: "authenticated-waitlist",
+                    queuePosition: lastInsertRowId,
+                    nodeId: clientId,
+                    domain: "relay-"+clientId+".dblockbuster.com",
+                    port: 8443,
+                    msg: FACTSOTHER.msg,
+                    connectionType: s(newFact.connectionType),
+                  };
+                  ws.send(JSON.stringify(factNewOther));
+                }else if(newFact.domain !== (null && undefined) && newFact.port !== (null && undefined)){
+                  console.log('Valid Key passed on Initialization!');
+                  const randId = Math.random().toString().slice(2, 11);
+                  const clientId = Date.now() + randId;
+                  ws.clientId = clientId;
+                  var factNewOther = {
+                    type: "authenticated",
+                    nodeId: clientId,
+                    domain: s(newFact.domain),
+                    port: s(newFact.port),
+                    msg: FACTSOTHER.msg,
+                    connectionType: s(newFact.connectionType),
+                  };
+                  const newClient = {
+                    id: clientId,
+                    domain: s(newFact.domain),
+                    port: s(newFact.port),
+                    providers: s(newFact.providersAmount),
+                    requesters: s(newFact.requestersAmount),
+                    broadcasters: s(newFact.broadcastersAmount),
+                    streamers: s(newFact.streamersAmount),
+                    connectionType: s(newFact.connectionType),
+                    ws: ws,
+                  };
+                  nodes.push(newClient);
+                  const newVideoStatus = {
+                    id: clientId,
+                    domain: s(newFact.domain),
+                    port: s(newFact.port),
+                    broadcasters: s(newFact.broadcastersAmount),
+                    streamers: s(newFact.streamersAmount),
+                  };
+                  videonodesStatus.push(newVideoStatus);
+                  const newStatus = {
+                    id: clientId,
+                    domain: s(newFact.domain),
+                    port: s(newFact.port),
+                    providers: s(newFact.providersAmount),
+                    requesters: s(newFact.requestersAmount),
+                  };
+                  nodesStatus.push(newStatus);
+                  const newProviderStatus = {
+                    id: clientId,
+                    domain: s(newFact.domain),
+                    port: s(newFact.port),
+                    providersStatus: s(newFact.providersStatus),
+                  };
+                  lazyProvidersStatus.push(newProviderStatus);
+                  ws.send(JSON.stringify(factNewOther));
+                }
+              } else {
+                ws.close();
+              }
+              break;
 
-      const randId = Math.random().toString().slice(2, 11);
-      const clientId = Date.now() + randId;
-      var factNewOther = {
-        type: 'authenticated',
-        videonodeId: clientId,
-        domain: url,
-        port: port,
-        msg: factsOther.msg
+            case "messageRelay":
+              if(ws.verified === true){
+              processNodeFacts(newFact.fact);
+              } else {
+                ws.close();
+              }
+              break;
+
+            case "providerStatus":
+              if (ws.verified === true){
+              var index = nodesStatus.findIndex((x) => x.id === ws.clientId);
+              nodesStatus[index].providers = s(newFact.size);
+              } else {
+                ws.close();
+              }
+              break;
+
+            case "requesterStatus":
+              if (ws.verified === true){
+              var index = nodesStatus.findIndex((x) => x.id === ws.clientId);
+              nodesStatus[index].requesters = s(newFact.size);
+              } else {
+                ws.close();
+              }
+              break;
+
+            case "broadcasterStatus":
+              if (ws.verified === true){
+              var index = videonodesStatus.findIndex(
+                (x) => x.id === ws.clientId
+              );
+              videonodesStatus[index].broadcasters = s(newFact.size);
+              } else {
+                ws.close();
+              }
+              break;
+
+            case "streamerStatus":
+              if (ws.verified === true){
+              var index = videonodesStatus.findIndex(
+                (x) => x.id === ws.clientId
+              );
+              videonodesStatus[index].streamers = s(newFact.size);
+              } else {
+                ws.close();
+              }
+              break;
+
+            case "lazyProviderStatus":
+              if (ws.verified === true){
+              var index = lazyProvidersStatus.findIndex(
+                (x) => x.id === ws.clientId
+              );
+              lazyProvidersStatus[index].providersStatus = s(
+                newFact.providersStatus
+              );
+              }
+              break;
+
+            case "ping":
+              if (ws.verified === true){
+              console.log(
+                "Ping receieved:",
+                newFact.connectionType,
+                ws.clientId
+              );
+              ws.send(
+                JSON.stringify({
+                  connectionType: "gateway",
+                  messageType: "pong",
+                })
+              );
+              }
+              break;
+            }
+          break;
+
+        case "client":
+          switch (newFact.messageType) {
+            case "status":
+              var factNewOther = {
+                videoNodes: videonodesStatus,
+                nodes: nodesStatus,
+              };
+              ws.send(JSON.stringify(factNewOther));
+              break;
+            case "availability":
+              //This will return avaliable locations for users to use like which video nodes they can request broadcaster to etc..!
+              console.log("VideoNodes:", videonodesStatus);
+              console.log("Nodes:", nodesStatus);
+              const videoNodes = videonodesStatus.filter(
+                (x) => x.streamers < 5000 && x.broadcasters < 500
+              );
+              const Nodes = nodesStatus.filter(
+                (x) => x.requesters < 50000 && x.providers < 50000
+              );
+              var factNewOther = {
+                messageType: "availability",
+                videoNodes: videoNodes,
+                nodes: Nodes,
+              };
+              ws.send(JSON.stringify(factNewOther));
+              break;
+            case "lazyAvailability":
+              const size = newFact.fileSize;
+              //This will return avaliable locations for users to use like which video nodes they can request broadcaster to etc..!
+              const lazyProviders = lazyProvidersStatus.filter((x) =>
+                x.filter((y) => y.sizeAvailable)
+              );
+              var factNewOther = {
+                messageType: "lazyAvailability",
+                lazyProviders: lazyProviders,
+              };
+              ws.send(JSON.stringify(factNewOther));
+              break;
+          }
+          break;
       }
-      var data2 = `data: ${JSON.stringify(factNewOther)}\n\n`;
-
-      response.write(data2);
-      //const newFact = JSON.parse(request.body);
-      //console.log(newFact);
-      //console.log(request.body);
-      const newClient = {
-        id: clientId,
-        domain: url,
-        port: port,
-        response
-      };
-
-      videonodes.push(newClient);
-      videonodesStatus.push({
-        id: clientId,
-        domain: url,
-        port: port,
-        status: 'connected'
-      })
-
-      request.on('close', () => {
-        console.log(`${clientId} Connection closed`);
-        videonodes = videonodes.filter(client => client.id !== clientId);
-        videonodesStatus = videonodesStatus.filter(client => client.id !== clientId);
-      });
-    } else {
-      response.status(404);
+    } catch (error) {
+      console.log("Websocket On Message Error:", error);
     }
-  } catch (e) {
-    console.log(e);
-  }
+    //console.log('nodeMsg:', newFact);
+    ///sendToAllNodes(newFact);
+  });
+
+  ws.on("close", () => {
+    console.log("Connection closed");
+    removeClient(ws);
+  });
+});
+
+server.listen(PORT, () => {
+  console.log(`Facts Events service listening at http://localhost:${PORT}`);
+});
+
+function removeClient(ws) {
+  nodes = nodes.filter((client) => client.ws !== ws);
+  nodesStatus = nodesStatus.filter((client) => client.id !== ws.clientId);
+  videonodes = videonodes.filter((client) => client.ws !== ws);
+  videonodesStatus = videonodesStatus.filter(
+    (client) => client.id !== ws.clientId
+  );
 }
-//This is the node event client listener channel for the gateway!
-app.get('/node', eventsNodeHandlerCatch);
 
-app.get('/videonode', eventsVideoNodeHandlerCatch)
-
-
-//This relay is for relaying a all msgs to all nodes!
-function sendEventsToAllNodes(newFact) {
+/**
+ * Sends events to all message nodes.
+ *
+ * @param {Object} newFact - The new fact object.
+ * @param {string} newFact.nodeId - The ID of the node.
+ * @param {string} newFact.type - The type of the fact.
+ * @param {string} newFact.fact - The fact itself.
+ */
+function sendToAllNodes(newFact) {
   var nodeId = newFact.nodeId;
   var Type = newFact.type;
   var Fact = newFact.fact;
   var relayedFact = {
     nodeId: nodeId,
     type: Type,
-    fact: Fact
-  }
+    fact: Fact,
+  };
   console.log(relayedFact);
-  //console.log('Ids', objId, 'types', type, reqType);
-  nodes.forEach(node => {
-    if (node.id !== nodeId) {
-      console.log('passing msg:', newFact, 'too node:', node.id);
-      node.response.write('data: ' + JSON.stringify(relayedFact) + '\n\n');
+
+  nodes.forEach((node) => {
+    if (node.nodeId !== nodeId) {
+      console.log("passing msg:", newFact, "to node:", node.id);
+      node.ws.send(JSON.stringify(relayedFact));
     }
   });
 }
+//app.get('/node', eventsNodeHandler);
+//app.get('/videonode', eventsVideoNodeHandler);
+//app.get('/requester', eventsRequesterHandler);
 
-function addNodeMsg(request, response, next) {
-
+/*function addNodeMsg(request, response, next) {
   const newFact = request.body;
   console.log('nodeMsg:', newFact);
-  //facts.push(newFact);
   response.json(newFact);
-  return sendEventsToAllNodes(newFact);
+  sendEventsToAllNodes(newFact);
 }
-app.post('/nodemsg', addNodeMsg);
+*/
+//app.post('/nodemsg', addNodeMsg);
+//BELOW IS ERROR HANDLING CODE
+////////////////////////////////////////////////////////////////////////////////
+async function cleanupAndExit(){
+  try {
+    await cleanUpCloudFlareAndExit();
+  } catch (error) {
+    console.error('Error on cleanupAndExit in main index.js', error);
+  }
+  // Perform any other necessary cleanup tasks here...
+  process.exit(0);
+}
 
+process.on('exit', async () => {
+  console.log('Received exit signal, initiating cleanup...');
+  await cleanupAndExit();
+});
 
+process.on('SIGTERM', async () => {
+  console.log('Received SIGTERM signal, initiating cleanup...');
+  await cleanupAndExit();
+});
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-//console.log("If you are reading this then SUCCESS and " + " Wazza ZAP ")
+process.on('SIGINT', async () => {
+  console.log('Received SIGINT signal (Ctrl+C), initiating cleanup...');
+  await cleanupAndExit();
+});
