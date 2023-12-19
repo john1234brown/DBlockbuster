@@ -16,8 +16,10 @@ The Video Relay Server and Message Relay Server this is a single server node tha
 If you don't have your own domain and ssl certs don't worry we generate a subdomain for your video relay server on authentication of server files also the video server is packaged with a ssl certificates for this subdomain!
 
 Also you can utilize the bring your own domain where you can configure the node server your domain and port and use a cloudflare tunnel we will include tutorials for these.
-as for setting up cloudflare tunnel please refer to cloudflares documentations here https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/get-started/create-remote-tunnel/
-for setting up the tunnel please forward the cloudflare tunnel to localhost:8443 instead of localhost:5000!
+
+As for setting up cloudflare tunnel please refer to cloudflares documentations here https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/get-started/create-remote-tunnel/
+
+For setting up the tunnel please forward the cloudflare tunnel to localhost:8443 instead of localhost:5000!
 
 This is the main branch just documenting What this service really is and what, its about the other 3 branches will go more in depth on each of the server and gateway systems along with the file provider electron application! And there own documentation can be found on there branch!
 
