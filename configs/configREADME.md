@@ -1,4 +1,4 @@
-```javascript
+```json
 {
   NOTICE HOW WE DONT INCLUDE THE https:// or http:// url prefix we only need the subdomain its on aka the www. and also the domain it is on aka example.com!
   "domain": "www.example.com",
