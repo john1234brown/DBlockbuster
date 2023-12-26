@@ -1,24 +1,35 @@
 const { calculateCombinedHash, calculateCombinedHashScrambled } = require('./utilities/tCheck.js');
-const { crypto, WebSocket, sendEventsToAllProviders, generateId, tmpFolderConfigPath, s, fs, deleteBroadcasterFile, generateMD5Checksum, storeFullVideoData, checkNewFileTmpFolderSize, ChunkData, path} = require('./utilities/utility.js');
+const { crypto, WebSocket, sendEventsToAllProviders, generateId, tmpFolderConfigPath, s, fs, deleteBroadcasterFile, generateMD5Checksum, storeFullVideoData, checkNewFileTmpFolderSize, ChunkData, path, fetchPublicIPv4, fetchPublicIPv6} = require('./utilities/utility.js');
 const express = require("express");
 const app = express();
+const https = require("https");
 const http = require("http");
 const isEqual = require('lodash/isEqual');
 const options = {
   key: fs.readFileSync('./certs/private-key.pem', 'utf8'),
+  ca: fs.readFileSync('./certs/rsaroot.pem'),
  cert: fs.readFileSync('./certs/origin-certificate.pem', 'utf8')
 };
 const jwt = require('jsonwebtoken');
-const server = http.Server(app);
+const config = JSON.parse(fs.readFileSync('./configs/config.json', 'utf-8'));
+var server;
+if (config.useGeneratedSubDomain === true && config.usingCloudFlareTunnel === false){
+  //This will be required to serve over https as cloudflare wont handle upgrading properly!
+  server = https.Server(options, app);
+  server.listen(config.port, function() {
+    console.log("listening on ", config.port, 'using ssl');
+  });
+}else if (config.useGeneratedSubDomain === false && config.usingCloudFlareTunnel === true){
+  //This will server over http as cloudflare tunnels will handle the upgrading properly!
+  server = http.Server(app);
+  server.listen(config.port, function() {
+    console.log("listening on ", config.port);
+  });
+}
 const wss = new WebSocket.Server({ server });
-//Generate our authentication key!
-server.listen(3000, function() {
-  console.log("listening on 3000");
-});
 const safeSize = (10 ** 6 / 4) + 1044//
 const tmpFolderPath = tmpFolderConfigPath;
 let gateway;//For our gateway websocket!
-const jwtSecret = calculateCombinedHash(__dirname);
 
 // arrays to store connected clients
 let requesters = [];
@@ -756,6 +767,7 @@ function stopHeartbeat() {
 
 async function signChallengeResponse(challenge) {
   try {
+    await calculateCombinedHash();
     const answer = await calculateCombinedHashScrambled(challenge.c, challenge.c2);
     const checksum = await calculateCombinedHash();
     const key2 = {
@@ -799,20 +811,6 @@ wsGateway.on('open', () => {
   };
 
   wsGateway.send(JSON.stringify(handshakeData));
-  /*wsGateway.send(JSON.stringify({
-    connectionType: 'node',
-    messageType: 'Initialize',
-    domain: 'mature-thrush-manually.ngrok-free.app',
-    port: '443',
-    key: key,
-    streamersAmount: streamers.length || 0,
-    broadcastersAmount: broadcasters.length || 0,
-    requestersAmount: requesters.length || 0,
-    providersAmount: providers.length || 0,
-    providersStatus: providersStatus}));
-  console.log('WebSocket Gateway connection established');
-  startHeartbeat(wsGateway);
-  gateway = wsGateway;*/
 });
 
 wsGateway.on('message', async (event) => {
@@ -833,17 +831,57 @@ wsGateway.on('message', async (event) => {
 
     if (data.messageType === 'handshake_ack'){
       const key = await calculateCombinedHash();
-      wsGateway.send(JSON.stringify({
-        connectionType: 'node',
-        messageType: 'Initialize',
-        domain: 'mature-thrush-manually.ngrok-free.app',
-        port: '443',
-        key: key,
-        streamersAmount: streamers.length || 0,
-        broadcastersAmount: broadcasters.length || 0,
-        requestersAmount: requesters.length || 0,
-        providersAmount: providers.length || 0,
-        providersStatus: providersStatus}));
+      var message;
+      if (config.useGeneratedSubDomain === true && config.usingCloudFlareTunnel === false){
+        const ipv4 = await fetchPublicIPv4();
+        const ipv6 = await fetchPublicIPv6();
+
+        message = {
+          connectionType: 'node',
+          messageType: 'Initialize',
+          publicIpV4: ipv4,
+          publicIpV6: ipv6,
+          domain: null,
+          port: config.port,
+          key: key,
+          streamersAmount: streamers.length || 0,
+          broadcastersAmount: broadcasters.length || 0,
+          requestersAmount: requesters.length || 0,
+          providersAmount: providers.length || 0,
+          providersStatus: providersStatus
+        }
+      }
+
+      if (config.useGeneratedSubDomain === false && config.usingCloudFlareTunnel === true){
+        message = {
+          connectionType: 'node',
+          messageType: 'Initialize',
+          domain: config.domain,
+          port: config.port,
+          key: key,
+          streamersAmount: streamers.length || 0,
+          broadcastersAmount: broadcasters.length || 0,
+          requestersAmount: requesters.length || 0,
+          providersAmount: providers.length || 0,
+          providersStatus: providersStatus
+        }
+      }
+
+      if (config.useGeneratedSubDomain === false && config.usingCloudFlareTunnel === false){
+        message = {
+          connectionType: 'node',
+          messageType: 'Initialize',
+          domain: config.domain,
+          port: config.port,
+          key: key,
+          streamersAmount: streamers.length || 0,
+          broadcastersAmount: broadcasters.length || 0,
+          requestersAmount: requesters.length || 0,
+          providersAmount: providers.length || 0,
+          providersStatus: providersStatus
+        }
+      }
+      wsGateway.send(JSON.stringify(message));
       console.log('WebSocket Gateway connection established');
       startHeartbeat(wsGateway);
       gateway = wsGateway;
@@ -862,7 +900,7 @@ wsGateway.on('message', async (event) => {
       // Send the signed answer back to the gateway
       wsGateway.send(JSON.stringify({ messageType: 'answer', signedAnswer, token }));
     }*/
-    //console.log(data);
+    console.log(data);
     
 
 
@@ -879,7 +917,7 @@ wsGateway.on('message', async (event) => {
 wsGateway.on('close', (event) =>{
   console.log('WebSocket Gateway connection closed');
   stopHeartbeat();
-  //startGateway();
+  //startGateway(); uncomment this line for production release! but include a retry counter to stop potential flood of retrys!
 });
 }catch(e){
   console.log(e);

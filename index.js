@@ -8,11 +8,18 @@ const crypto = require("crypto");
 const path = require("path");
 const fastDeepEqual = require('fast-deep-equal');
 const isEqual = require('lodash/isEqual');
-const { cleanUpCloudFlareAndExit, cloudFlareInit, generateSubDomain } = require("./utilities/cloudflare");
+const { es, ss, containsAnySubstring } = require('./utilities/sanitizers.js');
+const { cleanUpCloudFlareAndExit, cloudFlareInit, generateSubDomain, removeSubDomain } = require("./utilities/cloudflare");
 //cloudFlareInit();
 const CloudFlareDB = require('./utilities/db.js');
 const { Worker } = require("node:worker_threads");
 const { CheckIP, CheckNodeIP } = require('./utilities/ratelimit.js');
+
+// Assuming wss has a property named 'clients' which is a Map
+function findWebSocketClientByClientId(clientId) {
+  const client = nodes.find((node) => node.id === clientId);
+  return client ? client : null;
+}
 
 function startCloudFlareWaitListWorker() {
   const worker = new Worker(path.join(process.cwd(), 'utilities', 'cloudflareWaitList.js'));
@@ -31,7 +38,43 @@ function startCloudFlareWaitListWorker() {
       switch (data.type){
         case 'success':
           //Here we process the returned message and process the queued ITEMS!
-
+          const client = findWebSocketClientByClientId(data.id);
+          if (client){
+            console.log('Client is:', client);
+            const newVideoStatus = {
+              id: client.id,
+              domain: client.domain,
+              port: client.port,
+              broadcasters: client.broadcasters,
+              streamers: client.streamers,
+            };
+            videonodesStatus.push(newVideoStatus);
+            const newStatus = {
+              id: client.id,
+              domain: client.domain,
+              port: client.port,
+              providers: client.providers,
+              requesters: client.requesters,
+            };
+            nodesStatus.push(newStatus);
+            const newProviderStatus = {
+              id: client.id,
+              domain: client.domain,
+              port: client.port,
+              providersStatus: client.providersStatus,
+            };
+            lazyProvidersStatus.push(newProviderStatus);
+            var factNewOther = {
+              type: "authenticated",
+              nodeId: client.id,
+              domain: client.domain,
+              port: client.port,
+              msg: FACTSOTHER.msg,
+              msg2:'You have a generated subdomain located at relay-'+data.id+'.dblockbuster.com',
+              connectionType: client.connectionType,
+            };
+            client.ws.send(JSON.stringify(factNewOther));
+          }
           break;
         case 'failed':
           //Here we process the failed generate and close this node connection! let them know to retry!
@@ -93,52 +136,6 @@ var waitlist = [];
 const FACTSOTHER = {
   msg: "This is a websocket gateway provided by DBlockbuster! For the msgs to be relayed from nodes to streamers and vice versa!",
 };
-
-
-function deepReplaceEscapeSequences(input) {
-  if (Array.isArray(input)) {
-    return input.map(deepReplaceEscapeSequences);
-  } else if (typeof input === 'object') {
-    return Object.keys(input).reduce((acc, key) => {
-      acc[key] = deepReplaceEscapeSequences(input[key]);
-      return acc;
-    }, {});
-  } else if (input !== undefined && input !== null) {
-    return input.toString().replace(/\\([0-9a-fA-F]{2})|[\x00-\x1F\x7F-\x9F]|\\u([0-9a-fA-F]{4})|[|`]|\\/g, '');
-  } else {
-    return input; // Return input as-is if it's undefined or null
-  }
-}
-/**
- * Takes an input and performs various transformations based on its type.
- * to ensure proper sanitization of the input by removing all potential escape characters!
- * @param {any} input - The input value to be transformed.
- * @return {any} - The transformed value.
- */
-function s(input) {
-  if (typeof input !== 'string' && typeof input === 'number') {
-    // Handle numeric input
-    input = input.toString().replace(/\\([0-9a-fA-F]{2})|[\x00-\x1F\x7F-\x9F]|\\u([0-9a-fA-F]{4})|[|`]|\\/g, '');
-    return Number(input);
-  }
-
-  // Handle arrays
-  if (Array.isArray(input)) {
-    return deepReplaceEscapeSequences(input);
-  }
-
-  // Handle objects
-  if (typeof input === 'object') {
-    return deepReplaceEscapeSequences(input);
-  }
-
-  // Handle non-object input
-  if (input !== undefined || null) {
-    input = input.toString().replace(/\\([0-9a-fA-F]{2})|[\x00-\x1F\x7F-\x9F]|\\u([0-9a-fA-F]{4})|[|`]|\\/g, '');
-  }
-
-  return input;
-}
 
 function scrambleFiles(files, indices) {
   return new Promise((resolve, reject) => {
@@ -211,8 +208,8 @@ async function calculateHash(filePath) {
     //throw new Error(`Error calculating hash for file ${filePath}: ${error.message}`);
   }
 }
-
-async function calculateCombinedHash() {
+//OutDated Version Deprecated and revoked!!! due to intensive cpu usage from concurent recursive fs usage!
+async function deprecated_calculateCombinedHash() {
   try {
   const fileList = await readFilesRecursively(path.join(__dirname, 'LocalTest'));
   //console.log(execpath);
@@ -260,6 +257,92 @@ async function calculateCombinedHash() {
     console.log(e);
   }
 }
+
+async function saveCombinedHash(){
+  try {
+  console.log('Building Video Relay Node Merkle Verification File!');
+  const fileList = await readFilesRecursively(path.join(__dirname, 'LocalTest'));
+  const execFiles = await readFilesRecursively(path.join(__dirname, 'LocalTest', 'node_modules'));
+  const calculateAndSortHashes = async (files) => {
+    const hashes = [];
+    for (const file of files) {
+      const filePath = path.join(file);
+      if (fs.statSync(filePath).isFile() && !filePath.includes("tmp") && !filePath.includes('certs') && !filePath.includes('configs')) {
+        const fileHash = await calculateHash(filePath);
+        hashes.push(fileHash);
+      }
+    }
+    return hashes.sort();
+  };
+
+  const fileHashes = await calculateAndSortHashes(fileList);
+  const file2Hashes = await calculateAndSortHashes(execFiles);
+
+  // Combine hashes into a single string and calculate hash
+  const combinedHash = crypto.createHash('sha256');
+  combinedHash.update(fileHashes.join(''));
+  //console.log('Amount of Hashes!',fileHashes.length);
+  const execHash = crypto.createHash('sha256');
+  execHash.update(file2Hashes.join(''));
+
+  const answer = {
+    firstHash: combinedHash.digest('hex'),
+    secondHash: fileHashes,
+    thirdHash: execHash.digest('hex'),
+    fourthHash: file2Hashes,
+  };
+
+  console.log('Amount of Hashes!', fileHashes.length);
+  console.log('Amount2 of Hashes!', file2Hashes.length);
+
+  // Save the object to a file
+  const filePath = path.join(process.cwd(), 'merkle.json');
+  await fs.promises.writeFile(filePath, JSON.stringify(answer, null, 2));
+
+  console.log('Object saved to file successfully.');
+
+  // Load the object from the file without modifying it
+  const jsonString = await fs.promises.readFile(filePath, 'utf-8');
+  const loadedObject = JSON.parse(jsonString, (key, value) => value, 4);
+  /*const loadedObject = JSON.parse(jsonString, (key, value) => {
+    if (Array.isArray(value)) {
+      return value.slice(); // Return a copy of the array to prevent modification
+    }
+    return value;
+  });*/
+  //console.log('Object loaded from file:', loadedObject);
+
+  // Check if the loaded object is equal to the original one
+  const isEqualToo = isEqual(answer, loadedObject);
+  console.log('Objects are equal:', isEqualToo);
+  return;
+  //return combinedHash.digest('hex');
+  //return;
+  }catch(e){
+    console.log(e);
+  }
+}
+saveCombinedHash();
+
+async function getCombinedHash() {
+  try {
+  const filePath = path.join(process.cwd(), 'merkle.json');
+  // Load the object from the file without modifying it
+  const jsonString = await fs.promises.readFile(filePath, 'utf-8');
+  //const loadedObject = JSON.parse(jsonString, (key, value) => value, 4);
+  const loadedObject = JSON.parse(jsonString, (key, value) => {
+    if (Array.isArray(value)) {
+      return value.slice(); // Return a copy of the array to prevent modification
+    }
+    return value;
+  });
+  //console.log('Object loaded from file:', loadedObject);
+  return loadedObject;
+  }catch (e){
+    console.log(e);
+  }
+}
+
 //To generate scramble! if we are doing scramble challenge!
 function getRandomNumber() {
   return Math.floor(Math.random() * 1719); // 0 to 1719 (inclusive)
@@ -319,7 +402,7 @@ async function generateAnswer(challenge){
   const c1 = challenge.c;
   const c2 = challenge.c2;
 
-  const Hashes = await calculateCombinedHash();
+  const Hashes = await getCombinedHash();
 
   const c1Hashes = Hashes.secondHash;
   const c2Hashes = Hashes.fourthHash;
@@ -341,22 +424,26 @@ async function generateAnswer(challenge){
   return answer;
 }
 
-function verifyNodeResponse(nodeId, signedResponse) {
+async function verifyNodeResponse(nodeId, signedResponse) {
   try {
     const nodePublicKey = nodePublicKeys[nodeId].publicKey;
     const decoded = jwt.verify(signedResponse, nodePublicKey, {
       algorithm: "RS256",
     });
+/*    const ogchecksum = await getCombinedHash();
     console.log('Fast Deep Equal New Checksum:', fastDeepEqual(Object(decoded.challenge.checksum), Object(nodePublicKeys[nodeId].checksum)));
     console.log('Fast Deep Equal New Checksum Using same as scramble:', fastDeepEqual(decoded.challenge.checksum, nodePublicKeys[nodeId].checksum));
     console.log('Additional New Checksum:', isEqual(Object(decoded.challenge.checksum), Object(nodePublicKeys[nodeId].checksum)));
     console.log('Additional New Checksum Using same as scramble:', isEqual(decoded.challenge.checksum, nodePublicKeys[nodeId].checksum));
-    console.log('Decoded Checksum: is saving to file!:');
-    //fs.writeFileSync('./tmpchecksumAnswer.json', JSON.stringify(nodePublicKeys[nodeId].checksum, null, 2));
-    //fs.writeFileSync('./tmpchecksum.json', JSON.stringify(decoded.challenge.checksum, null, 2));
-    //console.log('Saving answer checksum:');
-    //fs.writeFileSync('./tmpscrambleans.json', JSON.stringify(nodePublicKeys[nodeId].answer, null, 2));
-    //fs.writeFileSync('./tmpcheckscrambleanswer.json', JSON.stringify(decoded.challenge.scrambled, null, 2));
+    console.log('OG check:', isEqual(decoded.challenge.checksum, ogchecksum));
+    console.log('Decoded Checksum: is saving to file!:');*/
+    //Uncomment below to enable debugging mode!
+    /*fs.writeFileSync('./tmpchecksumAnswer.json', JSON.stringify(nodePublicKeys[nodeId].checksum, null, 2));
+    fs.writeFileSync('./tmpchecksum.json', JSON.stringify(decoded.challenge.checksum, null, 2));
+    console.log('Saving answer checksum:');
+    fs.writeFileSync('./tmpscrambleans.json', JSON.stringify(nodePublicKeys[nodeId].answer, null, 2));
+    fs.writeFileSync('./tmpcheckscrambleanswer.json', JSON.stringify(decoded.challenge.scrambled, null, 2));*/
+    console.log('Original Checksum:', isEqual(decoded.challenge.checksum, nodePublicKeys[nodeId].checksum));
     console.log('Scramble: ', isEqual(decoded.challenge.scrambled, nodePublicKeys[nodeId].answer));
     if (isEqual(decoded.challenge.checksum, nodePublicKeys[nodeId].checksum)){
       console.log('Valid Client!');
@@ -378,9 +465,9 @@ wss.on("connection", (ws, request) => {
   ws.xForwardedForIP = headers['x-forwarded-for'];
   ws.cFConnectingIP = headers['cf-connecting-ip'];
   if (headers['cf-pseudo-ipv4']){
-    ws.ipv4 = headers['cf-pseudo-ipv4'];
+    ws.ipv4 = ss(es(headers['cf-pseudo-ipv4']));
   }else {
-    ws.ipv4 = headers['cf-connecting-ip'];
+    ws.ipv4 = ss(es(headers['cf-connecting-ip']));
   }
   console.log(headers);
   
@@ -406,9 +493,12 @@ wss.on("connection", (ws, request) => {
               const randId = Math.random().toString().slice(2, 11);
               const clientId = Date.now() + randId;
               ws.clientId = clientId;
+              ws.connectionType = 'node';
               const nodePublicKey = newFact.publicKey;
               //Generate Checksum For verification!
-              const checksum = await calculateCombinedHash();
+              const checksum = await getCombinedHash();
+              console.log('Amount of hashes in checksum second:', checksum.secondHash.length);
+              console.log('Amount of Hashes in checksum fourth:', checksum.fourthHash.length);
               //fs.writeFileSync('./checksum.json', JSON.stringify(checksum, null, 2));
               // Generate a challenge for the node!
               const challenge = generateChallenge();
@@ -438,7 +528,7 @@ wss.on("connection", (ws, request) => {
               const nodeId = ws.clientId;
               const signedResponse = newFact.signedResponse;
 
-              if (verifyNodeResponse(nodeId, signedResponse)) {
+              if (await verifyNodeResponse(nodeId, signedResponse)) {
                 // Continue with the connection
                 // ...
                 ws.verified = true; // Set the connection to verified! this way we can allow them to move forward!
@@ -463,12 +553,20 @@ wss.on("connection", (ws, request) => {
               if (
                 ws.verified === true && fastDeepEqual(nodePublicKeys[ws.clientId].checksum, newFact.key)
               ) {
-                if (newFact.domain === (null || undefined) && newFact.port === (null || undefined)) {
+                /*
+                *    Valid Key Passed and they don't have a domain and port already so we need to add them to the waitlist...
+                */
+                if (newFact.domain === null && newFact.publicIpV4 !== (null && undefined)) {
                   console.log('Valid Key passed on Initialization! They are requesting for subdomain as they didnt provide one lets put them in the waitlist to be generated!');
                   const randId = Math.random().toString().slice(2, 11);
                   const clientId = Date.now() + randId;
                   ws.clientId = clientId;
-                  const result = CloudFlareDB.prepare('INSERT INTO "waitList"("clientId","clientIp","providers","requesters","broadcasters","streamers") VALUES (?,?,?,?,?,?)').run(clientId, ws.ipv4, s(newFact.providersAmount), s(newFact.requestersAmount), s(newFact.broadcastersAmount), s(newFact.streamersAmount));
+                  console.log(newFact);
+                  ws.publicIpV4 = ss(es(newFact.publicIpV4));
+                  ws.generatedSubDomain = true;
+
+
+                  const result = CloudFlareDB.prepare('INSERT INTO "waitList"("clientId","clientIp","providers","requesters","broadcasters","streamers") VALUES (?,?,?,?,?,?)').run(clientId, ws.publicIpV4, ss(es(newFact.providersAmount)), ss(es(newFact.requestersAmount)), ss(es(newFact.broadcastersAmount)), ss(es(newFact.streamersAmount)));
                   const lastInsertRowId = result.lastInsertRowid;
                   //^ added the client to the db! waitlist!
                   var factNewOther = {
@@ -476,11 +574,28 @@ wss.on("connection", (ws, request) => {
                     queuePosition: lastInsertRowId,
                     nodeId: clientId,
                     domain: "relay-"+clientId+".dblockbuster.com",
-                    port: 8443,
+                    port: es(newFact.port),
                     msg: FACTSOTHER.msg,
-                    connectionType: s(newFact.connectionType),
+                    connectionType: es(newFact.connectionType),
                   };
+                  console.log(factNewOther);
+                  const newClient = {
+                    id: clientId,
+                    domain: 'relay-'+ws.clientId+'.dblockbuster.com',
+                    port: es(newFact.port),
+                    providers: es(newFact.providersAmount),
+                    requesters: es(newFact.requestersAmount),
+                    broadcasters: es(newFact.broadcastersAmount),
+                    streamers: es(newFact.streamersAmount),
+                    connectionType: es(newFact.connectionType),
+                    providersStatus: es(newFact.providersStatus),
+                    ws: ws,
+                  };
+                  nodes.push(newClient);
                   ws.send(JSON.stringify(factNewOther));
+                /*
+                *    Valid Key Passed and they have a domain and port already so we dont need to add them to the waitlist...
+                */
                 }else if(newFact.domain !== (null && undefined) && newFact.port !== (null && undefined)){
                   console.log('Valid Key passed on Initialization!');
                   const randId = Math.random().toString().slice(2, 11);
@@ -489,44 +604,45 @@ wss.on("connection", (ws, request) => {
                   var factNewOther = {
                     type: "authenticated",
                     nodeId: clientId,
-                    domain: s(newFact.domain),
-                    port: s(newFact.port),
+                    domain: es(newFact.domain),
+                    port: es(newFact.port),
                     msg: FACTSOTHER.msg,
-                    connectionType: s(newFact.connectionType),
+                    connectionType: es(newFact.connectionType),
                   };
                   const newClient = {
                     id: clientId,
-                    domain: s(newFact.domain),
-                    port: s(newFact.port),
-                    providers: s(newFact.providersAmount),
-                    requesters: s(newFact.requestersAmount),
-                    broadcasters: s(newFact.broadcastersAmount),
-                    streamers: s(newFact.streamersAmount),
-                    connectionType: s(newFact.connectionType),
+                    domain: es(newFact.domain),
+                    port: es(newFact.port),
+                    providers: es(newFact.providersAmount),
+                    requesters: es(newFact.requestersAmount),
+                    broadcasters: es(newFact.broadcastersAmount),
+                    streamers: es(newFact.streamersAmount),
+                    connectionType: es(newFact.connectionType),
+                    providersStatus: es(newFact.providersStatus),
                     ws: ws,
                   };
                   nodes.push(newClient);
                   const newVideoStatus = {
                     id: clientId,
-                    domain: s(newFact.domain),
-                    port: s(newFact.port),
-                    broadcasters: s(newFact.broadcastersAmount),
-                    streamers: s(newFact.streamersAmount),
+                    domain: es(newFact.domain),
+                    port: es(newFact.port),
+                    broadcasters: es(newFact.broadcastersAmount),
+                    streamers: es(newFact.streamersAmount),
                   };
                   videonodesStatus.push(newVideoStatus);
                   const newStatus = {
                     id: clientId,
-                    domain: s(newFact.domain),
-                    port: s(newFact.port),
-                    providers: s(newFact.providersAmount),
-                    requesters: s(newFact.requestersAmount),
+                    domain: es(newFact.domain),
+                    port: es(newFact.port),
+                    providers: es(newFact.providersAmount),
+                    requesters: es(newFact.requestersAmount),
                   };
                   nodesStatus.push(newStatus);
                   const newProviderStatus = {
                     id: clientId,
-                    domain: s(newFact.domain),
-                    port: s(newFact.port),
-                    providersStatus: s(newFact.providersStatus),
+                    domain: es(newFact.domain),
+                    port: es(newFact.port),
+                    providersStatus: es(newFact.providersStatus),
                   };
                   lazyProvidersStatus.push(newProviderStatus);
                   ws.send(JSON.stringify(factNewOther));
@@ -547,7 +663,7 @@ wss.on("connection", (ws, request) => {
             case "providerStatus":
               if (ws.verified === true){
               var index = nodesStatus.findIndex((x) => x.id === ws.clientId);
-              nodesStatus[index].providers = s(newFact.size);
+              nodesStatus[index].providers = es(newFact.size);
               } else {
                 ws.close();
               }
@@ -556,7 +672,7 @@ wss.on("connection", (ws, request) => {
             case "requesterStatus":
               if (ws.verified === true){
               var index = nodesStatus.findIndex((x) => x.id === ws.clientId);
-              nodesStatus[index].requesters = s(newFact.size);
+              nodesStatus[index].requesters = es(newFact.size);
               } else {
                 ws.close();
               }
@@ -567,7 +683,7 @@ wss.on("connection", (ws, request) => {
               var index = videonodesStatus.findIndex(
                 (x) => x.id === ws.clientId
               );
-              videonodesStatus[index].broadcasters = s(newFact.size);
+              videonodesStatus[index].broadcasters = es(newFact.size);
               } else {
                 ws.close();
               }
@@ -578,7 +694,7 @@ wss.on("connection", (ws, request) => {
               var index = videonodesStatus.findIndex(
                 (x) => x.id === ws.clientId
               );
-              videonodesStatus[index].streamers = s(newFact.size);
+              videonodesStatus[index].streamers = es(newFact.size);
               } else {
                 ws.close();
               }
@@ -589,7 +705,7 @@ wss.on("connection", (ws, request) => {
               var index = lazyProvidersStatus.findIndex(
                 (x) => x.id === ws.clientId
               );
-              lazyProvidersStatus[index].providersStatus = s(
+              lazyProvidersStatus[index].providersStatus = es(
                 newFact.providersStatus
               );
               }
@@ -663,7 +779,12 @@ wss.on("connection", (ws, request) => {
 
   ws.on("close", () => {
     console.log("Connection closed");
-    removeClient(ws);
+    if (ws.connectionType === 'node' && ws.generatedSubDomain === true){
+      removeSubDomain(ws.clientId);
+      removeClient(ws);
+    }else{
+      removeClient(ws);
+    }
   });
 });
 
@@ -706,6 +827,14 @@ function sendToAllNodes(newFact) {
     }
   });
 }
+app.get('/', (req, res) => {
+  // Set the content type to HTML
+  res.setHeader('Content-Type', 'text/html');
+
+  // Send a simple HTML response
+  res.status(200).send('<html><head><title>Hello Browser!</title></head><body><h1>Hello Browser!</h1></body></html>');
+});
+
 //app.get('/node', eventsNodeHandler);
 //app.get('/videonode', eventsVideoNodeHandler);
 //app.get('/requester', eventsRequesterHandler);

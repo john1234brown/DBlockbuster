@@ -1,4 +1,5 @@
 const fs = require('fs');
+const http = require('http');
 const crypto = require('crypto');
 const WebSocket = require('ws');
 const path = require('path');
@@ -259,8 +260,57 @@ function sendEventsToAllProviders(json, ws){
   });
 }
 
+function fetchPublicIPv4() {
+  return new Promise((resolve, reject) => {
+    const options = {
+      host: 'api.ipify.org',
+      port: 80,
+      path: '/',
+    };
+
+    const req = http.get(options, (resp) => {
+      let data = '';
+
+      resp.on('data', (chunk) => {
+        data += chunk;
+      });
+
+      resp.on('end', () => {
+        resolve(data);
+      });
+    });
+
+    req.on('error', (err) => {
+      reject(err);
+    });
+  });
+}
+
+function fetchPublicIPv6() {
+  return new Promise((resolve, reject) => {
+    const options = {
+      host: 'api64.ipify.org',
+      port: 80,
+      path: '/',
+    };
+
+    const req = http.get(options, (resp) => {
+      let data = '';
+
+      resp.on('data', (chunk) => {
+        data += chunk;
+      });
+
+      resp.on('end', () => {
+        resolve(data);
+      });
+    });
+
+    req.on('error', (err) => {
+      reject(err);
+    });
+  });
+}
 
 
-
-
-return module.exports = { crypto, cleanupAndExit, sendEventsToAllProviders, generateId , tmpFolderConfigPath, s, deepReplaceEscapeSequences, deleteBroadcasterFile, storeFullVideoData, generateMD5Checksum, checkNewFileTmpFolderSize, fs, WebSocket, ChunkData, path};
+return module.exports = { crypto, cleanupAndExit, sendEventsToAllProviders, generateId , tmpFolderConfigPath, s, deepReplaceEscapeSequences, deleteBroadcasterFile, storeFullVideoData, generateMD5Checksum, checkNewFileTmpFolderSize, fs, WebSocket, ChunkData, path, fetchPublicIPv4, fetchPublicIPv6};

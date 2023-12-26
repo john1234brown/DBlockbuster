@@ -18,19 +18,37 @@ async function processWaitlist() {
     if (waitlist){
       //console.log(waitlist);
       for (const obj of waitlist){ 
-        console.log(obj);
-        console.log(obj.clientId);
-        console.log(obj.clientIp);
-        //const success = await generateSubDomain(obj.clientId, obj.clientIp);
-        /*if (success){
-          console.log('Successfully added this client parent post port Message get this socket by clientId, and send them the response of completion!');
+        console.log("Processing waitlist object:", obj);
+        console.log("Processing waitlist object ClientId:", obj.clientId);
+        console.log("Processing waitlist object ClientIP:", obj.clientIp);
+        const success = await generateSubDomain(obj.clientId, obj.clientIp);
+        console.log('Success equals:', success);
+        if (success){
+          //Use the obj.clientId
+          //Parent port post message the client id!
+          const message = {
+            type: 'success',
+            id: obj.clientId,
+            ip: obj.clientIp
+          }
+          parentPort.postMessage(JSON.stringify(message));
+          const result = CloudFlareDB.prepare('DELETE FROM "waitList" WHERE "clientId"=? AND "clientIp"=?').run(obj.clientId, obj.clientIp);
+          console.log('Remove Results are:', result);
 
         }else if (success === false){
           console.log('Failed adding this client parentPort Post and remove this socket and have them retry!');
-
-        }*/
+          //Use the obj.clientId
+          //Parent port post message the client id!
+          const message = {
+            type: 'failed',
+            id: obj.clientId,
+            ip: obj.clientIp
+          }
+          parentPort.postMessage(JSON.stringify(message));
+          const result = CloudFlareDB.prepare('DELETE FROM "waitList" WHERE "clientId"=? AND "clientIp"=?').run(obj.clientId, obj.clientIp);
+          console.log('Remove Results are:', result);
+        }
       }
-
       isProcessingWaitlist = false;
     }
   }catch(e){

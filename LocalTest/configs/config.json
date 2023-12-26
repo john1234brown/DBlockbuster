@@ -1,0 +1,6 @@
+{
+  "domain": "www.example.com",
+  "port": 8443,
+  "useGeneratedSubDomain": true,
+  "usingCloudFlareTunnel": false
+}

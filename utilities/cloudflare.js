@@ -3,10 +3,10 @@ const fs = require('fs');
 const FormData = require('form-data');
 const path = require('path');
 const CloudFlareDB = require('./db.js');
+const { max } = require('lodash');
 
-var ListOfRecordIds = [];
 var requests = 0;//Need to keep track of our api request amounts to ensure we are within the limit!
-const maxRequests = 1000 //Limit to allow atleast 200 requests to be performed from the dashboard incase we need to flush or restore etc..!
+const maxRequests = 1200 //Limit to allow atleast 200 requests to be performed from the dashboard incase we need to flush or restore etc..!
 /*Also we will use a backup and restore dns Record system
 */
 //To ensure this doesnt get heavily flooded we will potentially put a wait list functionality in so it doesnt await the generateSubDomain inside the main websocket instance and potentially halt new Nodes from connecting
@@ -19,8 +19,7 @@ async function delay(ms) {
 
 async function generateSubDomain(clientId, ip){
   return new Promise(async (resolve, reject) => {
-    const maxRetries = 23; // Adjust as needed //this will allow no more then 6 minutes of retrying which it really shouldnt go that far but just incase!
-    let retryCount = 0;
+    const maxRetries = 43; // Adjust as needed //this will allow no more then 12 minutes of retrying which it really shouldnt go that far but just incase!
 
     const attemptRequest = async () => {
     try {
@@ -51,13 +50,8 @@ async function generateSubDomain(clientId, ip){
             if (response.data.success === true){
               // Extract and store the id in ListOfRecordIds
               const recordId = response.data.result.id;
-              const RecordObj = {
-                clientId: clientId,
-                recordId: recordId
-              }
-              ListOfRecordIds.push(RecordObj);
-              console.log('ListOfRecordIds:', ListOfRecordIds);
-              console.log('Record Obj:', RecordObj);
+              CloudFlareDB.prepare('INSERT INTO "generatedSubDomains"("clientId","subDomain","subDomainId","clientIp") VALUES (?,?,?,?)').run(clientId, 'relay-'+clientId+'.dblockbuster.com', recordId, ip);
+              console.log('Added RecordId:', recordId, 'For Client:', clientId, 'With the ip of:', ip);
               resolve(true);
             }else {
                 console.log('Error adding Subdomain for relay:', clientId,"\nWith the ip address:", ip,"\nData:",response.data);
@@ -70,13 +64,13 @@ async function generateSubDomain(clientId, ip){
         }else {
         //Set a timeout and also await the timed out promise this will generate a infinite retry promise that will stop when request amount is exceeded!
         await delay(15*1000);
-        await generateSubDomain(clientId, ip).then(resolve).catch(reject);
+        resolve(await generateSubDomain(clientId, ip));
         }
     }catch (error){
       console.log(error);
       // Retry if retry count is less than the maximum allowed retries
       if (retryCount < maxRetries) {
-        retryCount++;
+        retryCount = retryCount+1;
         console.log(`Retrying (${retryCount}/${maxRetries})...`);
         await delay(15 * 1000);
         await attemptRequest();
@@ -88,18 +82,143 @@ async function generateSubDomain(clientId, ip){
     };
 
     //Start the first attempt
+    let retryCount = 0;
     await attemptRequest();
   });
 }
 
+async function removeSubDomain(clientId) {
+  return new Promise(async (resolve, reject) => {
+    const result = CloudFlareDB.prepare('SELECT "subDomainId" FROM "generatedSubDomains" WHERE "clientId"=?').get(clientId);
+    const subDomainId = result.subDomainId;
+    const maxRetries = 43; // Adjust as needed
 
-function removeSubDomain(clientId){
-  const generatedSubDomains = CloudFlareDB.prepare('SELECT * FROM "generatedSubDomains"  ORDER BY "clientId" ASC LIMIT 0, 49999').run();
+    const attemptRequest = async (clientId, subDomainId) => {
+      try {
+        if (requests < maxRequests) {
+          requests = requests + 1;
 
-  /*if (ListOfRecordIds.includes(clientId)){
-    console.log('Found record Successfully able to remove!');
-  }*/
-  ///var recordObj = ListOfRecordIds.find((r)=> r.clientId === clientId);
+          const zoneIdentifier = process.env.CLOUDFLARE_ZONE_ID;
+          const apiKey = process.env.CLOUDFLARE_API;
+          const apiUrl = `https://api.cloudflare.com/client/v4/zones/${zoneIdentifier}/dns_records/${subDomainId}`;
+
+          const headers = {
+            'Content-Type': 'application/json',
+            'X-Auth-Email': 'john1234brown23@gmail.com',
+            'Authorization': `Bearer ${apiKey}`
+          };
+
+          const response = await axios.delete(apiUrl, { headers });
+
+          if (response.data.success === true) {
+            // Remove from the database after successful Cloudflare fetch
+            CloudFlareDB.prepare('DELETE FROM "generatedSubDomains" WHERE "clientId" = ? AND "subDomainId" = ?').run(clientId, subDomainId);
+
+            console.log('Removed SubdomainId:', subDomainId, 'For Client:', clientId);
+            resolve(true);
+          } else {
+            console.log('Error removing Subdomain for relay:', clientId, '\nData:', response.data);
+            resolve(false);
+          }
+        } else {
+          //Set a timeout and also await the timed out promise this will generate a infinite retry promise that will stop when request amount is exceeded!
+          console.log('Max requests reached. Waiting for the rate limits to reset.');
+          await delay(1 * 15 * 1000); // Wait for 15 seconds before checking again
+          resolve(await attemptRequest(clientId, subDomainId));
+        }
+      } catch (error) {
+        console.error('Error removing subdomain:', error.message);
+
+        // Retry if retry count is less than the maximum allowed retries
+        if (retryCount < maxRetries) {
+          retryCount = retryCount+1;
+          console.log(`Retrying (${retryCount}/${maxRetries})...`);
+          await delay(15 * 1000);
+          await attemptRequest(clientId, subDomainId);
+        } else {
+          console.log(`Exceeded maximum retries (${maxRetries}). Giving up.`);
+          reject(false);
+        }
+      }
+    };
+
+    
+    let retryCount = 0;
+    await attemptRequest(clientId, subDomainId); // Start the first attempt
+  });
+}
+
+
+
+async function removeSubDomains() {
+  return new Promise(async (resolve, reject) => {
+    const maxRetries = 43; // Adjust as needed
+    let retries = 0;
+
+    const attemptRequest = async (clientId, subDomainId) => {
+      try {
+        if (requests < maxRequests) {
+          requests = requests + 1;
+
+          const zoneIdentifier = process.env.CLOUDFLARE_ZONE_ID;
+          const apiKey = process.env.CLOUDFLARE_API;
+          const apiUrl = `https://api.cloudflare.com/client/v4/zones/${zoneIdentifier}/dns_records/${subDomainId}`;
+
+          const headers = {
+            'Content-Type': 'application/json',
+            'X-Auth-Email': 'john1234brown23@gmail.com',
+            'Authorization': `Bearer ${apiKey}`
+          };
+
+          const response = await axios.delete(apiUrl, { headers });
+
+          if (response.data.success === true) {
+            // Remove from the database after successful Cloudflare fetch
+            CloudFlareDB.prepare('DELETE FROM "generatedSubDomains" WHERE "clientId" = ? AND "subDomainId" = ?').run(clientId, subDomainId);
+
+            console.log('Removed SubdomainId:', subDomainId, 'For Client:', clientId);
+            return true;
+          } else {
+            console.log('Error removing Subdomain for relay:', clientId, '\nData:', response.data);
+            return false;
+          }
+        } else {
+          console.log('Max requests reached. Waiting for the rate limits to reset.');
+          await delay(1 * 15 * 1000); // Wait for 15 seconds before checking again
+          return await attemptRequest(clientId, subDomainId);
+        }
+      } catch (error) {
+        console.error('Error removing subdomain:', error.message);
+        return false;
+      }
+    };
+
+    try {
+      const generatedSubDomains = CloudFlareDB.prepare('SELECT * FROM "generatedSubDomains" ORDER BY "clientId" ASC LIMIT 0, 49999').all();
+
+      for (const obj of generatedSubDomains) {
+        let success = false;
+        while (!success && retries < maxRetries) {
+          try {
+            success = await attemptRequest(obj.clientId, obj.subDomainId);
+          } catch (e) {
+            console.log(e);
+          } finally {
+            retries = retries+1;
+          }
+        }
+
+        if (!success) {
+          console.log(`Failed to remove SubdomainId: ${obj.subDomainId} after ${maxRetries} retries. For Client: ${obj.clientId}`);
+        }
+      }
+
+      resolve('Operation completed successfully');
+    } catch (e) {
+      console.error(e);
+      reject(e);
+    }
+  });
 }
 
 
@@ -171,7 +290,8 @@ async function cleanUpCloudFlareAndExit(){
     //console.log('Exporting local records to cloudflare!');
     //const filePath = path.join(process.cwd(), 'Cloudflare-Backups', 'dnsrecords.txt');
     //console.log(await exportDNSRecordsToCloudFlare(filePath));
-
+    await removeSubDomains();
+    return;
   }catch(e){
     console.log(e);
   }
