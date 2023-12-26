@@ -4,29 +4,67 @@ const express = require("express");
 const app = express();
 const https = require("https");
 const http = require("http");
+const { tunnel } = require("cloudflared");
 const isEqual = require('lodash/isEqual');
 const options = {
   key: fs.readFileSync('./certs/private-key.pem', 'utf8'),
-  ca: fs.readFileSync('./certs/rsaroot.pem'),
+  ca: fs.readFileSync('./certs/rsaroot.pem', 'utf8'),
  cert: fs.readFileSync('./certs/origin-certificate.pem', 'utf8')
 };
 const jwt = require('jsonwebtoken');
 const config = JSON.parse(fs.readFileSync('./configs/config.json', 'utf-8'));
 var server;
-if (config.useGeneratedSubDomain === true && config.usingCloudFlareTunnel === false){
-  //This will be required to serve over https as cloudflare wont handle upgrading properly!
-  server = https.Server(options, app);
-  server.listen(config.port, function() {
-    console.log("listening on ", config.port, 'using ssl');
-  });
-}else if (config.useGeneratedSubDomain === false && config.usingCloudFlareTunnel === true){
-  //This will server over http as cloudflare tunnels will handle the upgrading properly!
-  server = http.Server(app);
-  server.listen(config.port, function() {
-    console.log("listening on ", config.port);
-  });
+var wss;
+async function main (){
+  if (config.useGeneratedSubDomain === true && config.usingCloudFlareTunnel === false){
+    //This will be required to serve over https as cloudflare wont handle upgrading properly!
+    server = https.Server(options, app);
+    server.listen(config.port, function() {
+      console.log("listening on ", config.port, 'using ssl aka HTTPS');
+    });
+    // Handle server errors
+    server.on('error', (error) => {
+      console.error('HTTPS Server error:', error);
+    });
+    wss = new WebSocket.Server({ server });
+    initWebsocketListeners();
+    startGateway();
+  }else if (config.useGeneratedSubDomain === false && config.usingCloudFlareTunnel === true){
+    //This will server over http as cloudflare tunnels will handle the upgrading properly!
+    // run: cloudflared tunnel --hello-world
+    const { url, connections, child, stop } = tunnel({ "--url": 'localhost:2097' });
+  
+    // show the url
+    console.log("LINK:", await url);
+    config.domain = (await url).toString().replace(new RegExp('https://', 'g'), '');
+    console.log('Your domain is:', config.domain);
+    // wait for the all 4 connections to be established
+    const conns = await Promise.all(connections);
+  
+    // show the connections
+    console.log("Connections Ready!", conns);
+  
+    // stop the tunnel after 15 seconds
+    //setTimeout(stop, 15_000);
+  
+    child.on("exit", (code) => {
+      console.log("tunnel process exited with code", code);
+    });
+    server = http.Server(app);
+    config.port = 443; // we will be utilizing port 443 as this is the port its running on! through cloudflare https
+    server.listen(2097, function() {
+      console.log("listening on ", 2097, "using regular HTTP NON SSL", "But we are serving through cloudflare on port 443 through https!");
+    });
+    // Handle server errors
+    server.on('error', (error) => {
+      console.error('HTTP Server error:', error);
+    });
+    wss = new WebSocket.Server({ server });
+    initWebsocketListeners();
+    startGateway();
+  }
 }
-const wss = new WebSocket.Server({ server });
+main();
 const safeSize = (10 ** 6 / 4) + 1044//
 const tmpFolderPath = tmpFolderConfigPath;
 let gateway;//For our gateway websocket!
@@ -58,57 +96,60 @@ const nodeKeyPair = crypto.generateKeyPairSync('rsa', {
   privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
 });
 
+function initWebsocketListeners(){
 //This will sanitize a full nested array with all of its objects so if someone sent a custom property to inject and bypass sanitization checks this will ensure we catch it!
-wss.on('error', (err) => {
-  console.error(err);
-});
+  wss.on('error', (err) => {
+    console.error(err);
+  });
 
-wss.on('connection', (ws, req) => {
-  ws.on('message', (message) => {
-    try {
-      if (message.byteLength > safeSize) {
-        console.log('Message too large to process message size in byteLength is:', message.byteLength);
-        delete message; // Free up memory instantly!
-        ws.close(); // Remove websocket connection instantly! to ensure this is not a memory leak or potential dos attack!
-        return;
-      }
-      if (typeof message === 'object'){
-        const data = JSON.parse(message);
-        //console.log('Msg received', s(message), '\n', s(data));
-        console.log('Msg received', s(data));
-        console.log('ConnectionType:', s(data.connectionType));
-        if (typeof data.connectionType !== 'undefined' && typeof(data.connectionType) === 'string' && typeof(data.messageType) !== 'undefined' && typeof(data.messageType) === 'string'){
-          if (s(data.connectionType) === 'Requester') {
-            handleRequester(ws, data);
-          }
-          if (s(data.connectionType) === 'Provider') {
-            handleProvider(ws, data);
-          }
-          if (s(data.connectionType) === 'Broadcaster') {
-            handleBroadcaster(ws, data);
-          }
-          if (s(data.connectionType) === 'Streamer') {
-            handleStreamer(ws, data);
+  wss.on('connection', (ws, req) => {
+    ws.on('message', (message) => {
+      try {
+        if (message.byteLength > safeSize) {
+          console.log('Message too large to process message size in byteLength is:', message.byteLength);
+          delete message; // Free up memory instantly!
+          ws.close(); // Remove websocket connection instantly! to ensure this is not a memory leak or potential dos attack!
+          return;
+        }
+        if (typeof message === 'object'){
+          const data = JSON.parse(message);
+          //console.log('Msg received', s(message), '\n', s(data));
+          console.log('Msg received', s(data));
+          console.log('ConnectionType:', s(data.connectionType));
+          if (typeof data.connectionType !== 'undefined' && typeof(data.connectionType) === 'string' && typeof(data.messageType) !== 'undefined' && typeof(data.messageType) === 'string'){
+            if (s(data.connectionType) === 'Requester') {
+              handleRequester(ws, data);
+            }
+            if (s(data.connectionType) === 'Provider') {
+              handleProvider(ws, data);
+            }
+            if (s(data.connectionType) === 'Broadcaster') {
+              handleBroadcaster(ws, data);
+            }
+            if (s(data.connectionType) === 'Streamer') {
+              handleStreamer(ws, data);
+            }
           }
         }
+        return;      
+      } catch (error) {
+        handleBroadcasterArrayBuffer(ws, message);
+        //console.log('Error parsing message:', typeof(message));
+        //console.log('Error parsing instanceof:', message instanceof Object ? message.constructor.name : message.constructor);
+        //console.log(error);
       }
-      return;      
-    } catch (error) {
-      handleBroadcasterArrayBuffer(ws, message);
-      //console.log('Error parsing message:', typeof(message));
-      //console.log('Error parsing instanceof:', message instanceof Object ? message.constructor.name : message.constructor);
-      //console.log(error);
-    }
-  });
+    });
 
-  ws.on('close', () => {
-    const connectionType = ws.connectionType;
+    ws.on('close', () => {
+      const connectionType = ws.connectionType;
 
-    if (connectionType) {
-      handleDisconnect(connectionType, ws);
-    }
+      if (connectionType) {
+        handleDisconnect(connectionType, ws);
+      }
+    });
   });
-});
+  console.log('WebSocket server has started');
+}
 
 function handleRequester(ws, data) {
   // Handle Requester logic
@@ -678,15 +719,6 @@ process.on('SIGINT', async () => {
   await cleanupAndExit();
 });
 
-
-console.log('WebSocket server has started');
-// Handle server errors
-server.on('error', (error) => {
-  console.error('WebSocket server error:', error);
-});
-
-
-
 //BELOW IS GATEWAY HANDLING CODE
 ////////////////////////////////////////////////////////////////////////////////
 function postProvidersStatusToGateway(){
@@ -923,4 +955,3 @@ wsGateway.on('close', (event) =>{
   console.log(e);
 }
 }
-startGateway();

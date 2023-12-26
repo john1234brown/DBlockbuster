@@ -1,6 +1,12 @@
 {
   "domain": "www.example.com",
   "port": 2096,
-  "useGeneratedSubDomain": true,
-  "usingCloudFlareTunnel": false
+  "useGeneratedSubDomain": false,
+  "usingCloudFlareTunnel": true,
+  "usingYourOwnDomain": {
+    "enabled": false,
+    "private-key": "./certs/yourOwnPrivate.pem",
+    "origin-certificate": "./certs/yourOwnOriginCertificate.pem",
+    "root-ca": "./certs/yourOwnRootCA.pem"
+  }
 }
