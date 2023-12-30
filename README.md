@@ -10,6 +10,7 @@ This project implements a WebSocket server with Express and Node.js, facilitatin
 - **WebSocket**: Library for WebSocket server implementation
 - **lodash**: Utility library for common JavaScript tasks
 - **jsonwebtoken**: Library for JSON Web Token (JWT) creation and verification
+- **cloudflared**: Library for running Cloudflare Tunnels from within NodeJS without an account by using try.cloudflare.com free randomly generated domains.
 
 ## Configuration
 
@@ -20,14 +21,6 @@ Ensure the following SSL certificates are available in the specified paths:
 - Private Key: `./certs/private-key.pem`
 - Root CA: `./certs/rsaroot.pem`
 - Origin Certificate: `./certs/origin-certificate.pem`
-
-### Cloudflare Tunnel Configuration
-
-If using Cloudflare Tunnel, run the command:
-
-```bash
-cloudflared tunnel --hello-world
-```
 
 ### Project Configuration
 
