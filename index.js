@@ -1,4 +1,4 @@
-
+const debug = true;
 const { startStopP2P } = require('./index2.js');
 const fs = require('node:fs');
 const os = require('os');
@@ -99,21 +99,16 @@ function openGUI() {
       useContentSize: false,
       enableLargerThanScreen: false,
       webPreferences: {
+        devTools: debug,//Disable For Production Release!
         nodeIntegration: true,
         nodeIntegrationInWorker: true,
         preload: path.join(path.dirname(process.execPath), 'preload.js')
       }
     })
-
-    //const view = new BrowserView()
-    //win.setBrowserView(view)
-    //view.setBounds({ x: 0, y: 0, width: 1200, height: 800 });
-    //view.webContents.loadURL('http://localhost:3000');
-    // Load the index.html of the app.
     win.loadFile(path.join(path.dirname(process.execPath), 'gui','index.html'));
-
-    // Open the DevTools.
-    //win.webContents.openDevTools()
+    if (debug){
+      win.webContents.openDevTools();
+    }
   }
 }
 
@@ -157,6 +152,7 @@ function initializeMainGUI() {
       enableLargerThanScreen: false,
       sandbox: false,
       webPreferences: {
+        devTools: debug, //Disable For Production Release!
         nodeIntegration: true,
         nodeIntegrationInWorker: true,
         preload: path.join(path.dirname(process.execPath), 'preload.js')
@@ -167,7 +163,9 @@ function initializeMainGUI() {
     win.show();
 
     // Open the DevTools.
+    if (debug){
     win.webContents.openDevTools()
+    }
     // Handle unhandled exceptions
     process.on('uncaughtException', (error) => {
     // Log the error type and message
