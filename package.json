@@ -1,16 +1,19 @@
 {
-  "name": "streampal-file-provider-node",
+  "name": "dblockbuster-file-provider-electron",
   "version": "1.0.0",
-  "description": "P2P file providing Node and Utitilty Tool in one! For Movies and Tv Shows! Uses Smee Channels along with IPFS as a gateway for the files to be provided to the peers",
+  "description": "P2P File Providers Electron Application For Movies and Tv Shows! Uses Peer Hosted Websocket Relay Servers along with DBlockbuster as a gateway for the moderation process!",
   "main": "index.js",
   "author": "John Brown",
   "email": "john1234brown23@gmail.com",
-  "homepage": "https://github.com/john1234brown/",
+  "homepage": "https://github.com/john1234brown/DBlockbuster",
   "license": "MIT",
   "dependencies": {
+    "axios": "^1.6.3",
+    "better-sqlite3": "^9.2.2",
     "cors": "^2.8.5",
     "crypto": "^1.0.1",
     "express": "^4.18.2",
+    "smee-client": "^2.0.0",
     "ws": "^8.14.2"
   },
   "scripts": {
@@ -22,41 +25,36 @@
     "dist": "electron-builder"
   },
   "build": {
-    "appId": "streampal.io.github.john1234brown.file-provider-tool",
+    "appId": "dblockbuster.com.file-provider-tool",
     "extraFiles": [
       "assets",
       "fonts",
       "gui",
       "lib/*.js",
+      "preload.js",
+      "eula.json",
+      "eula_preload.js",
+      "database.sqlite3",
       "config.json"
     ],
     "files": [
       "node_modules/**/*",
       "config/**/*",
+      "build/**/*",
       "index.js",
+      "index2.js",
       "package.json"
     ],
     "dmg": {
-      "contents": [
-        {
-          "x": 110,
-          "y": 150
-        },
-        {
-          "x": 240,
-          "y": 150,
-          "type": "link",
-          "path": "/Applications"
-        }
-      ]
+      "icon": "build/Logo.png"
     },
     "linux": {
-      "category": "tools",
-      "maintainer": "John Brown",
+      "category": "Usual Applications",
+      "maintainer": "Johnathan Brown",
       "target": [
         "AppImage"
       ],
-      "icon": "build/backgroundBig.png"
+      "icon": "build/Logo.png"
     },
     "win": {
       "target": "NSIS",
@@ -64,7 +62,7 @@
     }
   },
   "devDependencies": {
-    "electron": "^23.3.13",
-    "electron-builder": "^24.6.4"
+    "electron": "^28.1.0",
+    "electron-builder": "^24.9.1"
   }
 }

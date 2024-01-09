@@ -1,19 +1,11 @@
 {
- "peerId": null,
- "providerUsername": "Theres-No-Way-Back-Now",
- "smee": false,
- "replit": true,
- "websocket": true,
- "openGUIOnStart": false,
- "repoDir": "/mnt/hgfs/Streampal/Streampal/Repo",
- "listOfRootFolderNames": [
-  "exampleRootFolder",
-  "examplerootMini",
-  "example2",
-  "example3"
- ],
- "maxUploadThreads": 4,
- "maxBroadcastThreads": 5,
- "maximumAmountOfFilesAndFoldersToSearchThroughOnDragAndDrops": 20,
- "repoAutoSearchIndexing": true
+  "debug": true,
+  "providerUsername": "Theres-No-Way-Back-Now",
+  "websocket": true,
+  "websocket_gateway": "wss://gateway.dblockbuster.com:8443",
+  "websocket_localVideoRelay": false,
+  "websocket_localVideoPort": 2096,
+  "maxBroadcastThreads": 5,
+  "maximumAmountOfFilesAndFoldersToSearchThroughOnDragAndDrops": 20
 }
+ 

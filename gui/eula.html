@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+
+    <meta charset="UTF-8">
+    <title> DBlockbuster File Provider Electron Application</title>
+    <link rel="icon" type="image/x-icon" href="assets/logos/TabLogo.png">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!--<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">-->
+    <link href="./style.css" rel="stylesheet">
+    <script src="./eula_script.js"></script>
+    <script>
+      window.onload = function() {
+        const agreeButton = document.getElementById("agree");
+        agreeButton.addEventListener('click', (event) =>{
+          console.log('agree Clicked');
+          window.electronAPI.onAgreeToEula();
+        });
+        const disagreeButton = document.getElementById("disagree")
+        disagreeButton.addEventListener('click', (event) =>{
+          console.log('agree Clicked');
+          window.electronAPI.onDisagreeToEula();
+        });
+      }
+    </script>
+  </head>
+
+<body class="body">
+  <div id="logobutton" style="background-color: #363845;padding:12rem;padding-bottom:0rem;padding-top:0rem;">
+    <img id="logobutton" class="logoClass" src="assets/logos/StreamPalLogo.png" alt="Stream Pal Top Logo">
+  </div>
+  <div class="tab">
+    <section>
+      <h2 class="tagSelector"><b>EULA & TOS & DISCLAIMERS</b></h2>
+      <p><h1>EULA:</h1></p>
+      <p>As a end user I agree to use this product by how the license and laws intended for it to be used I Will Not attempt to use to to share illicit illegal material, such as DMCA Copyright Violations, Pornography, I also am aware that if using this software for any of these illegal reasons means I take full responsibility for any penalities that shall be served to me for such!</p>
+      <p><h1>DISCLAIMER:</h1></p>
+      <p>As a provider you are legally responsible for what you provide so please follow all dmca and copyright laws accordingly</p>
+      <p><h1>TOS:</h1></p>
+      <p>WE ABSOLUTELY DO NOT AND WILL NOT BE RESPONSIBLE FOR YOUR ACTIONS YOU ARE COMPLETELY ENTITLED AND LIABLE FOR YOUR ACTIONS YOU AGREE TO THE TOS WHEN YOU MAKE A CLONE OF THIS REPOSITORY OR DOWNLOAD THIS AND RUN THIS APPLICATION! YOU AGREE TO FOLLOW ALL LAWS ACCORDINGLY WHEN IT COMES TO THE SHARING OF MOVIES AND TV SHOW FILES SUCH AS COPYRIGHT, DMCA, ALSO YOU WILL NOT ATTEMPT TO PROVIDE ANYTHING ILLEGAL SUCH AS CHILD PORNOGRAPHY, SNUFF FILMS, PORNOGRAPHY, BLACKMAIL ARE NOT ACCEPTABLE IN ANY FORM AND WILL RESULT IN A PERMANENT DENIAL OF USING OUR SERVICE AND WILL RESULT IN IMMEDIATE REPORT TO THE AUTHORITIES FOR SAID LOCATION WHERE PROVIDER IS FROM VPN USAGE IS NOT ALLOWED WHEN YOU ARE A PROVIDER MUST BE CONNECTING FROM YOUR ACTUAL PUBLIC IP ADDRESS ANY ATTEMPT TO HIDE ONES IDENTITY AS A PROVIDER WILL RESULT IN IMMEDIATE DENIAL OF USAGE OF OUR SERVICE. YOU UNDERSTAND AS A PROVIDER YOU ARE FULLY LIABLE FOR ALL ACTIONS YOU DO AND ANYWAY YOU USE OUR SERVICE ESPECIALLY IF IT BE IN ANY MEANS OTHER THEN WHAT IS INTENDED YOU UNDERSTAND AS A PROVIDER ALL THESE ABOVE AND UPON RUNNING THIS APPLICATION AND CONNECTING TO OUR SERVICE YOU ARE BOUND BY THIS TOS AND DISCLAIMER AGREEMENT AND AGREE TO THIS BY CONNECTING TO OUR SERVICE AND USING OUR SERVICE IN ANY MEANS.</p>
+      <!--<div><p>This is a test</p></div>-->
+      <p>
+        <button id="agree">Agree</button>
+        <button id="disagree">Disagree</button>
+      </p>
+    </section>
+  </div>
+
+
+
+
+
+
+</body>
+
+
+</html>
+
+
+
+<footer>
+  <p class="footerClass footerClassTop"> This website does not host any of the files listed or previewed or viewied on
+    our site. So we
+    are not liable for any copyright files please reach out to the file providers if you have any issues!</p>
+
+
+
+
+  <img class="footerClassImg" src="assets/footers/banner.png">
+  <p class="footerClass">
+  <div class="footerTitle">&copy; &reg;2024 DBlockbuster
+    <div> <a href="mailto:john1234brown23@gmail.com?subject=ContactatStreamPal&amp;body=Message from StreamPal site. : "
+        style="color:rgba(159, 71, 241, 0.897) ">Contact</a>
+    </div>
+
+</footer>
+
+</html>

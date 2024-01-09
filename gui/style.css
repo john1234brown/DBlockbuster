@@ -24,11 +24,15 @@ body {
 
 /*                              /// insert edited fix  : vampyre
 */
-.homeDiv1 { 
-/*display:flexbox;*/
-  background-color:#292929;
+.homeDiv1 {
+  background-color:#3b3b3e;
   display: flexbox;
   padding-bottom: 1rem;
+}
+.homeDiv1 h2{
+  text-align:center;
+  padding-top:.1rem;
+  background-color: #212529;
 }
 .homeDiv2 {
   background-color:#000000;
@@ -42,14 +46,20 @@ body {
 }
 
 .homeH3T {
-  text-align:center; 
-  padding-top:0rem;
+  display: inline-flexbox;
+  text-align:center;
+  margin-top:-1rem;
+  padding-top:.2rem;
+  background-color: #212529;
 }
 
 .homeH3M {
+  display: inline-flexbox;
   text-align:center;
-  padding-top:0.2rem;
+  margin-top:3rem;
+  padding-top:.5em;
   padding-bottom:0rem;
+  background-color: #212529;
 }
 
 .homeh23{

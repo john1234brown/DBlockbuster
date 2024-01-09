@@ -1,71 +1,41 @@
+//alert('Wazzzzz APPPP');//This will be used later on for our eula Agreement process!
+if (window.electronAPI.config.debug === false){
+  console.log = function (){
+  };
+}
 let Autohide = false;
-var server = 1;
-const TodaysDate = new Date();
 const timer = ms => new Promise(res => setTimeout(res, ms));
 var imdbId;
-var namee;
-var Id;
-var configjson;
-var data123;
-var ipns = null;
-var rootFolderName = null;
-var rootPath = null
-var pingIndex = 0;
+window.namee;
+window.Id;
+window.cookieValue;
+window.typeG;
+window.qualityG;
+window.episodeG;
+window.seasonG;
 var objlist = [];
-var adServersList = [];
-var AdServersInfo = {
-  'id': null,
-  'ep': null,
-  'season': null
-}
-var Bookmarks = [];
-var BookmarksJson;
-//const evtSource = new EventSource("http://localhost:3000");
-async function post() {
-  const requestOptions = {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ type: 'refresh' })
-  };
-  const response = await fetch('http://localhost:3030', requestOptions);
-  console.log(response);
-};
 
-async function postPing(url, status, index){
-  console.log('posting Ping')
-  var obj = {
-    type: status,
-    url: url,
-    pingIndex: index
-  }
-  const requestOptions = {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(obj)
-  };
-  const response = await fetch('http://localhost:3030/ping', requestOptions);
-  console.log('Post of ping result status code:',response.status);
+async function getInit() {
 }
-//post();
 
-async function updateLogs(log){
+function convertTitle2foldername(b) {
+  //console.log('Before:', s);
+  var a = b.toString().toLowerCase();
+  a = a.replaceAll(' ', '');
+  a = a.replace(/[\W_]+/g, "");
+  return a;
+}
+
+async function updateLogs(log) {
   const newelement = document.createElement("li");
   newelement.innerHTML = log;
   newelement.setAttribute('class', 'consoleLog');
   document.getElementById("consoleList").appendChild(newelement);
 }
 
-async function updateQuality(e){
-  const d = new Date();
-  d.setTime(d.getTime() + (7 * 24 * 60 * 60 * 1000));
-  var kia = "expires=" + d.toUTCString();
-  //const server = document.cookie.split('; ').find((row) => row.startsWith('server='))?.split('=')[1];
-  document.cookie = "quality=" + e + "; SameSite=strict; Secure; " + kia;
-  var i = 1
+async function updateQuality(e) {
+  window.qualityG = e;
+  var i = 0;
   for (var v of document.getElementsByName("quality")) {
     if (v.getAttribute('data-tag') === 'checked') {
       console.log('Found!');
@@ -83,561 +53,151 @@ async function updateQuality(e){
   }
 }
 
-
-/*async function getLogs() {
-  var event = new EventSource
-  /*const requestOptions = {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      'Request-Type': 'logs'
-    }
-  };
-  fetch('http://localhost:3030', requestOptions)
-    .then(function(response) {
-      // The response is a Response instance.
-      // You parse the data into a useable format using `.json()`
-      //console.log(response.status);
-      if (response.status === 200) {
-        return response.json();
-      }
-    }).then(function(data) {
-      if (data) {
-        for (obj of data.logs) {
-          if (obj.length > 1) {
-            console.log(obj);
-            const newelement = document.createElement("li");
-            newelement.innerHTML = obj;
-            newelement.setAttribute('class', 'consoleLog');
-            document.getElementById("consoleList").appendChild(newelement);
-          }
-        }
-      }
-      // `data` is the parsed version of the JSON returned from the above endpoint.
-      //console.log(data);  // { "userId": 1, "id": 1, "title": "...", "body": "..." }
-    }).catch(function(e) {
-      ///console.log(e);
-      return;
-    });
-  //const response = await fetch('http://localhost:3030', requestOptions);
-  //console.log(response.body);
-}*/
-
-async function getInit() {
-  const cookiequality = document.cookie.split('; ').find((row) => row.startsWith('quality='))?.split('=')[1];
-  if (cookiequality !== null && cookiequality !== undefined){
-  updateQuality(cookiequality);
-  }
-  const requestOptions = {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      'Request-Type': 'init'
-    }
-  };
-  fetch('http://localhost:3030', requestOptions)
-    .then(function(response) {
-      console.log(response.status);
-      // The response is a Response instance.
-      // You parse the data into a useable format using `.json()`
-      if (response.status === 200) {
-        return response.json();
-      }
-    }).then(function(data) {
-      console.log(data);
-      if (data) {
-        ipns = data.config.ipns;
-        rootPath = data.config.rootPath;
-        rootFolderName = data.config.rootFolderName;
-        configjson = data.config;
-        if (configjson.pingCheck === true){
-          if (data.pingReady === true){
-            const evtSource2 = new EventSource('http://localhost:3030/ping');
-            evtSource2.onmessage = (event) => {
-            try {
-              console.log('We have started Previous Ping log Check Listener!');
-              console.log(event.data);
-              var data = JSON.parse(event.data);
-              if (data.type === "array"){
-                pingIndex = parseInt(data.pingIndex);
-                console.log('pingIndex is ', data.pingIndex, 'set tooo', pingIndex);
-                console.log('objs are', data.obj);
-                getPingFiles();
-                for (var obj of data.obj){
-                  console.log('testing object', obj);
-                  if (obj.type === 'success') {
-                    var newelement = document.createElement("li");
-                    newelement.setAttribute('onclick', `window.open('${obj.url}', '_blank')`);
-                    newelement.setAttribute('class', 'pingLog');
-                    newelement.innerHTML = obj.url + " Was a success!";
-                    document.getElementById("activeFilesList").appendChild(newelement);
-                  }
-                  if (obj.type === 'failed') {
-                    var newelement = document.createElement("li");
-                    //newelement.setAttribute('onclick', `window.open('${obj}', '_blank')`);
-                    newelement.setAttribute('class', 'pingLog');
-                    //newelement.setAttribute('href', obj);
-                    newelement.innerHTML = obj.url + " Failed Please wait...!";
-                    document.getElementById("pendingFilesList").appendChild(newelement);
-                  }
-                //updateLogs(obj);
-                }
-              }
-            }catch (e){
-              console.log(e);
-            }
-            };
-          }
-        }
-        /*if (data.pingCheck === true){
-          const evtSource2 = new EventSource('http://localhost:3030/ping');
-          evtSource2.onmessage = (event) => {
-          try {
-            console.log('We have started Previous Ping log Check Listener!');
-            console.log(event.data);
-            var data = JSON.parse(event.data);
-            if (data.type === "array"){
-              pingIndex = parseInt(data.pingIndex);
-              console.log('pingIndex is ', data.pingIndex, 'set tooo', pingIndex);
-              console.log('objs are', data.obj);
-              getPingFiles();
-              for (var obj of data.obj){
-                console.log('testing object', obj);
-                if (obj.type === 'success') {
-                  var newelement = document.createElement("li");
-                  newelement.setAttribute('onclick', `window.open('${obj.url}', '_blank')`);
-                  newelement.setAttribute('class', 'pingLog');
-                  newelement.innerHTML = obj.url + " Was a success!";
-                  document.getElementById("activeFilesList").appendChild(newelement);
-                }
-                if (obj.type === 'failed') {
-                  var newelement = document.createElement("li");
-                  //newelement.setAttribute('onclick', `window.open('${obj}', '_blank')`);
-                  newelement.setAttribute('class', 'pingLog');
-                  //newelement.setAttribute('href', obj);
-                  newelement.innerHTML = obj.url + " Failed Please wait...!";
-                  document.getElementById("pendingFilesList").appendChild(newelement);
-                }
-              //updateLogs(obj);
-              }
-            }
-          }catch (e){
-            console.log(e);
-          }
-        };
-
-
-        }*/
-        //if (data.ipfsDesktopInstalled === true ) {
-          //setInterval(getPingFiles, 240000);
-          var counter = 0;
-          if (configjson.listOfRootFolderNames.length>0){
-            document.getElementById('settingRepoSelection').innerHTML = "";
-          }
-          for (var obj of configjson.listOfRootFolderNames) {
-            var newelement = document.createElement("option");
-            newelement.setAttribute('value', counter);
-            newelement.innerHTML = obj;
-            document.getElementById('settingRepoSelection').appendChild(newelement);
-            counter = counter + 1;
-          }
-        //}
-      }
-      // `data` is the parsed version of the JSON returned from the above endpoint.
-      //console.log(data);  // { "userId": 1, "id": 1, "title": "...", "body": "..." }
-    }).catch(function(e) {
-      //console.log(e);
-      return;
-    });
-  //const response = await fetch('http://localhost:3030', requestOptions);
-  //console.log(response.body);
-}
-
-async function pingCheck(data) {
-  console.log('starting Ping check!');
-  var index = pingIndex;
-  if (pingIndex>0 && (pingIndex <= (data.logs.length-2))){
-    console.log('Ping index is greater then initial going to push it up!');
-    index = pingIndex+1;
-  }
-  console.log('Ping check index:', index);
-  for (index; index<=(data.logs.length-1);index++){
-    var obj = data.logs[index];
-    fetch(obj).then(function(response) {
-      // The response is a Response instance.
-      // You parse the data into a useable format using `.json()`
-      if (response.status === 200) {
-        var newelement = document.createElement("li");
-        newelement.setAttribute('onclick', `window.open('${obj}', '_blank')`);
-        newelement.setAttribute('class', 'pingLog');
-        newelement.innerHTML = obj + " Was a success!";
-        document.getElementById("activeFilesList").appendChild(newelement);
-        postPing(obj, 'success', index);
-        //index = index + 1;
-        return;// response.text();
-      } else {
-        var newelement = document.createElement("li");
-        newelement.setAttribute('onclick', `window.open('${obj}', '_blank')`);
-        newelement.setAttribute('class', 'pingLog');
-        //newelement.setAttribute('href', obj);
-        newelement.innerHTML = obj + " Failed Please wait...!";
-        document.getElementById("pendingFilesList").appendChild(newelement);
-        postPing(obj, 'failed', index);
-        return;
-        //index = index + 1;
-      }
-    }).catch(function(e) {
-      /*console.log(e);
-      var newelement = document.createElement("li");
-      newelement.setAttribute('onclick', `window.open('${obj}', '_blank')`);
-      newelement.setAttribute('class', 'pingLog');
-      //newelement.setAttribute('href', obj);
-      newelement.innerHTML = obj + " Failed Please wait...!";
-      document.getElementById("pendingFilesList").appendChild(newelement);
-      postPing(obj, 'failed', index);
-      index = index + 1;*/
-    });
-    await timer(15000);
-  }
-  /*for (var obj of data.logs) {
-    if (index <= pingIndex){
-      index = index+1;
-      continue;
-    }else{
-    console.log('Ping index:', index);
-    console.log('Ping checking:', obj);
-    //const response = await fetch(obj);
-    fetch(obj).then(function(response) {
-      // The response is a Response instance.
-      // You parse the data into a useable format using `.json()`
-      if (response.status === 200) {
-        var newelement = document.createElement("li");
-        newelement.setAttribute('onclick', `window.open('${obj}', '_blank')`);
-        newelement.setAttribute('class', 'pingLog');
-        newelement.innerHTML = obj + " Was a success!";
-        document.getElementById("activeFilesList").appendChild(newelement);
-        postPing(obj, 'success', index);
-        index = index + 1;
-        return response.text();
-      } else {
-        var newelement = document.createElement("li");
-        newelement.setAttribute('onclick', `window.open('${obj}', '_blank')`);
-        newelement.setAttribute('class', 'pingLog');
-        //newelement.setAttribute('href', obj);
-        newelement.innerHTML = obj + " Failed Please wait...!";
-        document.getElementById("pendingFilesList").appendChild(newelement);
-        postPing(obj, 'failed', index);
-        index = index + 1;
-      }
-    }).catch(function(e) {
-      console.log(e);
-      var newelement = document.createElement("li");
-      newelement.setAttribute('onclick', `window.open('${obj}', '_blank')`);
-      newelement.setAttribute('class', 'pingLog');
-      //newelement.setAttribute('href', obj);
-      newelement.innerHTML = obj + " Failed Please wait...!";
-      document.getElementById("pendingFilesList").appendChild(newelement);
-      postPing(obj, 'failed', index);
-      index = index + 1;
-    });
-    await timer(45000);
-    //console.log('Ping Result', response.status);
-    /*if (response.status === 200){
-      var newelement = document.createElement("li");
-      newelement.innerHTML = obj + " Was a success!";
-      document.getElementById("activeFilesList").appendChild(newelement);
-    }else{
-      var newelement = document.createElement("li");
-      newelement.innerHTML = obj.log;
-      document.getElementById("pendingFilesList").appendChild(newelement);
-    }
-    }
-  }*/
-  pingIndex=0;
-  getPingFiles();
-}
-
-async function getPingFiles() {
-  const requestOptions = {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      'Request-Type': 'ping'
-    }
-  };
-  /*const response = await fetch('http://localhost:3030', requestOptions);
-  console.log(response);
-  const jsonresponse = */
-  console.log('Starting get ping files');
-  fetch('http://localhost:3030/', requestOptions)
-    .then(function(response) {
-      console.log(response.status);
-      // The response is a Response instance.
-      // You parse the data into a useable format using `.json()`
-      if (response.status === 200) {
-        return response.json();
-      }
-    }).then(function(data) {
-      console.log('Returned response!');
-      if (data) {
-        data123 = data;
-        console.log(data);
-        pingCheck(data);
-        /*for (obj of data.logs) {
-          //if (obj.length > 1) {
-            //if (obj.type === "success") {
-              //console.log(obj);
-              //const newelement = document.createElement("li");
-              //newelement.innerHTML = obj.log;
-              //document.getElementById("activeFilesList").appendChild(newelement);
-            //}
-            //if (obj.type === "failed") {
-              //console.log(obj);
-              //const newelement = document.createElement("li");
-              //newelement.innerHTML = obj.log;
-              //document.getElementById("pendingFilesList").appendChild(newelement);
-            //}
-          //}
-      }*/
-      }
-      // `data` is the parsed version of the JSON returned from the above endpoint.
-      //console.log(data);  // { "userId": 1, "id": 1, "title": "...", "body": "..." }
-    }).catch(function(e) {
-      //console.log(e);
-      return;
-    });
-  //const response = await fetch('http://localhost:3030', requestOptions);
-  //console.log(response.body);
-}
-
-function convertTitle2foldername(b) {
-  //console.log('Before:', s);
-  var a = b.toString().toLowerCase();
-  a = a.replaceAll(' ', '');
-  a = a.replace(/[\W_]+/g, "");
-  //d = encodeURIComponent(d);
-  //d = d.replaceAll('^\\+', '').replaceAll('[\\\\/:*?\'<>|]', '');
-  //console.log('After:', d);
-  return a;
-}
-
-async function mkDir(id, name, type, seasons) {
-  var safename = convertTitle2foldername(name);
-
-  const requestOptions = {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ "type": "mkdir", "id": id, "name": safename, "maketype": type, "seasons": seasons })
-  };
-  //const response = await fetch('http://localhost:3030', requestOptions);
-  //console.log(response);
-  fetch('http://localhost:3030', requestOptions)
-    .then(function(response) {
-      // The response is a Response instance.
-      // You parse the data into a useable format using `.json()`
-      return response.json();
-    }).then(function(data) {
-      // `data` is the parsed version of the JSON returned from the above endpoint.
-      //console.log(data);  // { "userId": 1, "id": 1, "title": "...", "body": "..." }
-    });
-    //makeDirs(id, safename, type, seasons);
-}
-//mkDir(0, "blah", "movie");
-
-async function startPingListener(){
-  const evtSource2 = new EventSource('http://localhost:3030/ping');
-  evtSource2.onmessage = (event) => {
-    try {
-      console.log('We have started Previous Ping log Check Listener!');
-      console.log(event.data);
-      var data = JSON.parse(event.data);
-      if (data.type === "array"){
-        pingIndex = parseInt(data.pingIndex);
-        console.log('pingIndex is ', data.pingIndex, 'set tooo', pingIndex);
-        console.log('objs are', data.obj);
-        getPingFiles();
-        for (var obj of data.obj){
-          console.log('testing object', obj);
-          if (obj.type === 'success') {
-            var newelement = document.createElement("li");
-            newelement.setAttribute('onclick', `window.open('${obj.url}', '_blank')`);
-            newelement.setAttribute('class', 'pingLog');
-            newelement.innerHTML = obj.url + " Was a success!";
-            document.getElementById("activeFilesList").appendChild(newelement);
-          }
-          if (obj.type === 'failed') {
-            var newelement = document.createElement("li");
-            //newelement.setAttribute('onclick', `window.open('${obj}', '_blank')`);
-            newelement.setAttribute('class', 'pingLog');
-            //newelement.setAttribute('href', obj);
-            newelement.innerHTML = obj.url + " Failed Please wait...!";
-            document.getElementById("pendingFilesList").appendChild(newelement);
-          }
-        //updateLogs(obj);
-        }
-      }
-    }catch (e){
-      console.log(e);
-    }
-  };
-}
-//console.log('converting puss in boots title ',convertTitle2foldername('Puss in Boots: The Last Wish'));
-//console.log('converting harry potters philospher stone title: ,', convertTitle2foldername("Harry Potter and the Philosopher's Stone"));
-
-//window.open = function(text) { console.log('tried to Open: ' + text); return true; };
-
-//Override Existing Window.alert function to combat popups and alerts!
 window.alert = function(text) { console.log('tried to alert: ' + text); return true; };
-
-//Window built in ads blocked!!
-/*onbeforeunload = (event) => { event.preventDefault; console.log("prevented redirect!") };
-window.onbeforeunload = function(event) {
-  console.log("prevented Redirect!");
-  event.preventDefault;
-}*/
 
 //Register events in the onload to ensure elements are loaded!
 window.onload = function() {
+  window.eApi = window.electronAPI;
+  window.Api = window.api;
+  window.api.refresh_status();
+
+  const counter = document.getElementById('counter');
+  console.log('counter is', counter);
+  console.log(counter);
+
+  window.electronAPI.onUpdateCounter((value) => {
+  const oldValue = Number(counter.innerText)
+  const newValue = oldValue + value
+  counter.innerText = newValue.toString()
+  window.electronAPI.counterValue(newValue)
+  });
+
+  window.electronAPI.ipc.send('asynchronous-message', 'test');
+  //await timer(5000);
+  window.electronAPI.ipc.send('asynchronous-message', 'SecondaryTest');
+
+  window.document.body.addEventListener('drop', (event) => {
+    console.log('Event Fired Off Drop event!');
+      if (window.document.getElementById('tabwatch').checked){
+        console.log('watch tab is checked successfully passed!', event);
+              event.preventDefault();
+              //event.stopPropagation();
+              var idcookie = window.Id;
+              if (idcookie){
+                  var namecookie = window.namee;
+                  var typecookie = window.typeG;
+                  var qualitycookie = window.qualityG;
+                  if (typecookie === "tv"){
+                      var seasoncookie = window.seasonG;
+                      var episodecookie = window.episodeG;
+                      if (event.dataTransfer.files.length <= window.electronAPI.config.maximumAmountOfFilesAndFoldersToSearchThroughOnDragAndDrops){
+                      for (const f of event.dataTransfer.files) {
+                          console.log('file:', f.path);
+                          console.log('File Type:', f.type);
+                          if (f.type==="video/mp4"){//Then we upload!
+                              console.log('Files path is ', f.path);
+                              var obj = {
+                                  type: "addFile",
+                                  fileType: "tv",
+                                  fileQuality: qualitycookie,
+                                  name: namecookie,
+                                  id: parseInt(idcookie),
+                                  season: parseInt(seasoncookie),
+                                  episode: parseInt(episodecookie),
+                                  path: f.path
+                              }
+                              console.log(obj);
+                              window.electronAPI.onAddFile(obj);
+                          }
+                      // Using the path attribute to get absolute file path
+                      console.log('File Path of dragged files: ', f.path)
+                      //console.log('File Type:', f.type.toString());
+                      }
+                      //Finished For Loop lets send the post obj!
+                      console.log('Finished For Loop!');
+                    }else{
+                      //This exceeds the allowed amount of files to loop through on drag and drop! aka to many files!
+                      return;
+                    }
+                  }else{//Type Movie Just upload check Post To Local express on 3030 with the id, type, name
+                    if (event.dataTransfer.files.length <= window.electronAPI.config.maximumAmountOfFilesAndFoldersToSearchThroughOnDragAndDrops){
+                      for (const f of event.dataTransfer.files) {
+                          if (f.type==="video/mp4"){//Then we upload!
+                              
+                              var obj = {
+                                  type: "addFile",
+                                  fileType: "movie",
+                                  fileQuality: qualitycookie,
+                                  name: namecookie,
+                                  id: parseInt(idcookie),
+                                  path: f.path
+                              }
+                              console.log(obj);
+                              window.electronAPI.onAddFile(obj);
+                          }
+                      console.log('File Path of dragged files: ', f.path)
+                      }//Finished For Loop
+                      console.log('Finished For Loop!');
+                    }else{
+                      //This exceeds the allowed amount of files to loop through on drag and drop! aka to many files!
+                      return;
+                    }
+                  }
+              }else{return;}
+      }else{
+          event.preventDefault();
+          return;
+      }
+  });
+
+  window.document.body.addEventListener('dragover', (e) => {
+      if (document.getElementById('tabwatch').checked){
+      e.preventDefault();
+      //e.stopPropagation();
+      }else{
+      e.preventDefault;
+      //e.stopPropagation();
+      return;
+      }
+    });
+   
+  window.document.addEventListener('dragenter', (event) => {
+      console.log('File is in the Drop Space');
+  });
+   
+  window.document.addEventListener('dragleave', (event) => {
+      console.log('File has left the Drop Space');
+  });
+
   document.getElementById('logobutton').addEventListener('click', test);
   document.getElementById('searchbox').addEventListener('change', updateSearchContainerbySearch);
-  document.getElementById('settingRepoSelection').addEventListener('change', updateRepoDir);
-  document.getElementById('settingsCreateRepoSubmit').addEventListener('click', addRepoDir);
-  if (!document.cookie.split('; ').find((row) => row.startsWith('quality='))?.split('=')[1]) {
-    const d = new Date();
-    d.setTime(d.getTime() + (7 * 24 * 60 * 60 * 1000));
-    var kia = "expires=" + d.toUTCString();
-    document.cookie = "quality="+"hd"+"; SameSite=strict; Secure; " + kia;
-    //namee = document.cookie.split('; ').find((row) => row.startsWith('quality='))?.split('=')[1];
-  }
-  if (!document.cookie.split('; ').find((row) => row.startsWith('browserIndex='))?.split('=')[1]) {
-    const d = new Date();
-    d.setTime(d.getTime() + (7 * 24 * 60 * 60 * 1000));
-    var kia = "expires=" + d.toUTCString();
-    document.cookie = "browserIndex="+0+"; SameSite=strict; Secure; " + kia;
-    //namee = document.cookie.split('; ').find((row) => row.startsWith('quality='))?.split('=')[1];
-  }
-  //document.getElementById('settingRepoSelection').addEventListener('change', updateRepoDir);
-  //document.getElementById('settingsCreateRepoSubmit').addEventListener('click', addRepoDir);
-  if (document.cookie.split('; ').find((row) => row.startsWith('name='))?.split('=')[1]) {
-    namee = document.cookie.split('; ').find((row) => row.startsWith('name='))?.split('=')[1];
-  }
-    if (document.cookie.split('; ').find((row) => row.startsWith('watchId='))?.split('=')[1]) {
-      if (document.cookie.split('; ').find((row) => row.startsWith('watchType='))?.split('=')[1]) {
-        if (document.cookie.split('; ').find((row) => row.startsWith('watchType='))?.split('=')[1] === "movie") {
-          updateMovieContainer();
-          //updateRecommendedAndSimilar();
-        }
-        if (document.cookie.split('; ').find((row) => row.startsWith('watchType='))?.split('=')[1] === "tv") {
-          console.log("TV detected!");
-          if (document.cookie.split('; ').find((row) => row.startsWith('season='))?.split('=')[1] && document.cookie.split('; ').find((row) => row.startsWith('episode='))?.split('=')[1]) {
-            console.log('Loaded');
-            updateTvContainer();
-            //updateRecommendedAndSimilar();
-          }
+  window.qualityG = 2;
+  if (window.Id !== undefined || null) {
+    if (window.typeG !== undefined || null) {
+      if (window.typeG === 'movie') {
+        updateMovieContainer();
+        updateRecommendedAndSimilar();
+      }
+      if (window.typeG === 'tv') {
+        console.log("TV detected!");
+        if ((window.episodeG && window.seasonG) !== (null || undefined)) {
+          console.log('Loaded');
+          updateTvContainer();
+          updateRecommendedAndSimilar();
         }
       }
     }
-  
+  }
+
   movieinitexample();
   movieinitstonerexample();
   tvshowinitstonerexample();
   tvshowinitexample();
-  //mkDir(0, "blah", "movie");
-  //var obj = [{"season":1,"episode_count":8},{"season":2,"episode_count":0}];
-  //mkDir(0, "blah", "tvshow", obj);
   getInit();///
-  //getPingFiles();
-  const evtSource = new EventSource('http://localhost:3030/consolelog');
-  evtSource.onmessage = (event) => {
-    try {
-      console.log(event.data);
-      var data1 = JSON.parse(event.data);
-      console.log(data1);
-      if (data1.type === "single"){
-        updateLogs(data1.obj);
-      }
-      if (data1.type === "array"){
-        for (var obj of data1.obj){
-          updateLogs(obj);
-        }
-      }
-      if (data1.type === 'task'){
-        if (data1.status === 'finished'){
-          if (configjson.pingCheck === true){
-            startPingListener();
-            return;
-          }
-          //pingIndex=0;
-          //getPingFiles();
-        }
-      }
-    }catch (e){
-      console.log(e);
-    }
-  };
-  //getLogs();///
-  //setInterval(getLogs, 30000);///
-  //bookmarkInit();
-  //bookmarkUpdate();
-  //getDir();
 }
 //updateTvContainer();
 
 
-async function addRepoDir(){
-  console.log('Changed');
-  if (document.getElementById('settingsCreateRepoName').value){
-    var name = document.getElementById('settingsCreateRepoName').value;
-    if (name.length>0){
-      const requestOptions = {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({type: 'addBrowserIndex', name: name})
-      };
-      fetch("http://localhost:3030", requestOptions).then(data =>{
-        console.log(data);
-      }).catch(e =>{
-        console.log(e);
-      });
-      var newelement = document.createElement('option');
-      newelement.setAttribute('value', configjson.listOfRootFolderNames.length);
-      newelement.innerHTML = name;
-      document.getElementById('settingRepoSelection').appendChild(newelement);
-    }
-  }
-}
-
-async function updateRepoDir(){
-  console.log('Changed');
-  var selected = document.getElementById('settingRepoSelection').value;
-  const d = new Date();
-  d.setTime(d.getTime() + (7 * 24 * 60 * 60 * 1000));
-  var kia = "expires=" + d.toUTCString();
-  document.cookie = "browserIndex=" + selected + "; SameSite=strict; Secure; " + kia;
-  const requestOptions = {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({type: 'updateBrowserIndex', index: selected})
-  };
-  fetch("http://localhost:3030", requestOptions).then(data =>{
-    console.log(data);
-  }).catch(e =>{
-    console.log(e);
-  });
-  console.log(selected);
-}
-
-//NEED TODO THIS////////////////////////////////////////////
-async function deleteRpoDirFromConfig(){///For the browser gui easy working with repo wont actually delete the whole folder just its entry in the config.json which makes the application ignore it!
-
-}
-//////////////////////////////////////////////////////////
 
 //Deprecated!
 async function getDir() {
@@ -647,25 +207,13 @@ async function getDir() {
 }
 
 function updatewatchIdAndEtc(id, type, name) {
-  const d = new Date();
-  d.setTime(d.getTime() + (7 * 24 * 60 * 60 * 1000));
-  var kia = "expires=" + d.toUTCString();
-  document.cookie = "watchId=" + id + "; SameSite=strict; Secure; " + kia;
-  Id = id;
-  document.cookie = "watchType=" + type + "; SameSite=strict; Secure; " + kia;
-  document.cookie = "name=" + name + "; SameSite=strict; Secure; " + kia;
-  namee = name;
-  /*
-  * Memory Note Please don't forget to add a updateExternalId
-  */
-
+  window.Id = id;
+  window.namee = name;
+  window.typeG = type;
 }
 
 function updatewatchType(type) {
-  const d = new Date();
-  d.setTime(d.getTime() + (7 * 24 * 60 * 60 * 1000));
-  var kia = "expires=" + d.toUTCString();
-  document.cookie = "watchType=" + type + "; SameSite=strict; Secure; " + kia;
+  window.typeG = type;
 }
 
 function updateSearchContainerbyPage(n) {
@@ -838,41 +386,31 @@ function updateSearchContainerbySearch() {
 function updateMovieContainer() {
   //bookmarkInit();
   var id; //Here we will load it from the document cookies
-  //var season = document.cookie.split('; ').find((row) => row.startsWith('season='))?.split('=')[1];
-  const name = document.cookie.split('; ').find((row) => row.startsWith('name='))?.split('=')[1];
-  if (document.cookie.split('; ').find((rowc) => rowc.startsWith('watchType=movie'))) {
-    const cookieValue = document.cookie.split('; ').find((row) => row.startsWith('watchId='))?.split('=')[1];
-    
-    id = cookieValue;
-    if (id) {
-
-    try {
-      document.getElementById("watchTvPlayer").removeAttribute('src');
-      document.getElementById("watchMoviePlayer").removeAttribute('style');
-      document.getElementById("seasoncontainer").setAttribute('style', 'display: none;');
-      document.getElementById("episodecontainer").setAttribute('style', 'display: none;');
-      document.getElementById("watchTvPlayer").setAttribute('style', 'display: none;');
-    } catch (e) { }
-    const cookieValue = document.cookie.split('; ').find((row) => row.startsWith('watchId='))?.split('=')[1];
-    id = cookieValue;
-
-
+  const name = window.namee
+  if (window.typeG === "movie") {
+    if (window.Id) {
+      try {
+        document.getElementById("watchTvPlayer").removeAttribute('src');
+        document.getElementById("watchMoviePlayer").removeAttribute('style');
+        document.getElementById("seasoncontainer").setAttribute('style', 'display: none;');
+        document.getElementById("episodecontainer").setAttribute('style', 'display: none;');
+        document.getElementById("watchTvPlayer").setAttribute('style', 'display: none;');
+      } catch (e) { }
+      id = window.Id;
     }
-
-    document.getElementById("detailType").innerHTML="Movie";
-    document.getElementById("detailName").innerHTML="Title: "+name;
+    document.getElementById("detailType").innerHTML = "Movie";
+    document.getElementById("detailName").innerHTML = "Title: " + window.namee;
   }
 }
 
 function updateTvContainer() {
   //bookmarkInit();
   var id; //Here we will load it from the document cookies
-  var season = document.cookie.split('; ').find((row) => row.startsWith('season='))?.split('=')[1];
-  if (document.cookie.split('; ').find((rowc) => rowc.startsWith('watchType=tv'))) {
-    const cookieValue = document.cookie.split('; ').find((row) => row.startsWith('watchId='))?.split('=')[1];
-    const name = document.cookie.split('; ').find((row) => row.startsWith('name='))?.split('=')[1];
-    document.getElementById("detailType").innerHTML="Tv Show";
-    document.getElementById("detailName").innerHTML="Title: "+name;
+  if (window.typeG === 'tv' && window.Id !== null || undefined) {
+    const cookieValue = window.Id;
+    const name = window.namee;
+    document.getElementById("detailType").innerHTML = "Tv Show";
+    document.getElementById("detailName").innerHTML = "Title: " + name;
     id = cookieValue;
     try {
       document.getElementById("watchTvPlayer").removeAttribute('style');
@@ -928,8 +466,8 @@ function updateTvContainer() {
           seasonelement.setAttribute("class", "card2");
           seasonelement.setAttribute('name', 'season');
           seasonelement.setAttribute("onclick", `getepisodes(${json.season_number})`);
-          console.log(season);
-          if (parseInt(season) === parseInt(json.season_number)) {
+          console.log(seasonG);
+          if (parseInt(seasonG) === parseInt(json.season_number)) {
             console.log('season is the same making it checked!');
             seasonelement.setAttribute('data-tag', 'checked');
           }
@@ -949,7 +487,7 @@ function updateTvContainer() {
 
       //mkDir("")
       console.log(objlist);
-      getepisodes(season);
+      getepisodes(seasonG);
     }).catch(e => {
       console.log(e);
     });
@@ -957,28 +495,10 @@ function updateTvContainer() {
   }
 }
 
-function updateServer(n) {
-  const cookieValue = document.cookie.split('; ').find((row) => row.startsWith('server='))?.split('=')[1];
-  const cookieValue2 = document.cookie.split('; ').find((row) => row.startsWith('watchType='))?.split('=')[1];
-  if (cookieValue === n) {
-    return;
-  } else {
-    server = n;
-    const d = new Date();
-    d.setTime(d.getTime() + (7 * 24 * 60 * 60 * 1000));
-    var kia = "expires=" + d.toUTCString();
-    document.cookie = "server=" + n + "; SameSite=strict; Secure; " + kia;
-    if (cookieValue2 === "movie") {
-      //updateMovieContainer();
-    } else {
-      var season = document.cookie.split('; ').find((row) => row.startsWith('season='))?.split('=')[1];
-      var episode = document.cookie.split('; ').find((row) => row.startsWith('episode='))?.split('=')[1];
-      //updateTvPlayer(season, episode);
-    }
-  }
-}
 
 function getepisodes(n) {
+  window.episodeG = 1;
+
   var result = objlist.find(tree => (tree.season === parseInt(n)));
   //console.log(n);
   //console.log(result);
@@ -998,17 +518,17 @@ function getepisodes(n) {
     i = i + 1;
   }
   document.getElementById("listofepisodes").innerHTML = "";
-  if (document.cookie.split('; ').find((row) => row.startsWith('episode'))) {
-    var episodecookie = document.cookie.split('; ').find((row) => row.startsWith('episode='))?.split('=')[1];
+  if (window.episodeG) {
+    var episodecookie = window.episodeG;
     for (var i = 0; result.episode_count > i; i++) {
-    const newelement = document.createElement("div");
-    newelement.innerHTML = `Episode ${(i + 1)}`;
-    newelement.setAttribute("class", "card2");
-    newelement.setAttribute('name', 'episode');
-    newelement.setAttribute("onclick", `updateTvPlayer(${n}, "${(i + 1)}");`);
-    if (parseInt(episodecookie)===parseInt(i+1)){newelement.setAttribute('data-tag', 'checked');}
-    document.getElementById("listofepisodes").appendChild(newelement);
-  }
+      const newelement = document.createElement("div");
+      newelement.innerHTML = `Episode ${(i + 1)}`;
+      newelement.setAttribute("class", "card2");
+      newelement.setAttribute('name', 'episode');
+      newelement.setAttribute("onclick", `updateTvPlayer(${n}, "${(i + 1)}");`);
+      if (parseInt(episodecookie) === parseInt(i + 1)) { newelement.setAttribute('data-tag', 'checked'); }
+      document.getElementById("listofepisodes").appendChild(newelement);
+    }
     //updateTvPlayer(n, episodecookie); //**
     /**
      * 
@@ -1016,17 +536,16 @@ function getepisodes(n) {
      * 
      */
     //
-    //updateTvAdServers(document.cookie.split('; ').find((row) => row.startsWith('watchId='))?.split('=')[1], n, episodecookie);
     //console.log('Howdy dudoidoo');
   } else {
     for (var i = 0; result.episode_count > i; i++) {
-    const newelement = document.createElement("div");
-    newelement.innerHTML = `Episode ${(i + 1)}`;
-    newelement.setAttribute("class", "card2");
-    newelement.setAttribute('name', 'episode');
-    newelement.setAttribute("onclick", `updateTvPlayer(${n}, "${(i + 1)}");`);
-    document.getElementById("listofepisodes").appendChild(newelement);
-  }
+      const newelement = document.createElement("div");
+      newelement.innerHTML = `Episode ${(i + 1)}`;
+      newelement.setAttribute("class", "card2");
+      newelement.setAttribute('name', 'episode');
+      newelement.setAttribute("onclick", `updateTvPlayer(${n}, "${(i + 1)}");`);
+      document.getElementById("listofepisodes").appendChild(newelement);
+    }
     //updateTvPlayer(n, 1);
   }
 }
@@ -1049,12 +568,11 @@ function getTvExternalIds(id) {
 }
 
 function updateTvPlayer(season, episode) {
-  const d = new Date();
-  d.setTime(d.getTime() + (7 * 24 * 60 * 60 * 1000));
-  var kia = "expires=" + d.toUTCString();
-  document.cookie = "season=" + season + "; SameSite=strict; Secure; " + kia;
-  document.cookie = "episode=" + episode + "; SameSite=strict; Secure; " + kia;
+  if (parseInt(season) !== parseInt(window.seasonG)){
   getepisodes(season);
+  }
+  window.seasonG = parseInt(season);
+  window.episodeG = parseInt(episode);
   var i = 1
   for (var v of document.getElementsByName("episode")) {
     if (v.getAttribute('data-tag') === 'checked') {
@@ -1064,11 +582,11 @@ function updateTvPlayer(season, episode) {
     if (i === parseInt(episode)) {
       console.log('YESS!')
       v.setAttribute('data-tag', 'checked');
-      console.log(i);
-      console.log(v);
+     // console.log(i);
+      //console.log(v);
     }
-    console.log(i);
-    console.log(v);
+    //console.log(i);
+    //console.log(v);
     i = i + 1;
   }
   i = 1;
@@ -1126,14 +644,11 @@ function test() {
 
 function cardclicked(id, name, type) {
   //console.log('cardClicked');
-  const d = new Date();
-  d.setTime(d.getTime() + (7 * 24 * 60 * 60 * 1000));
-  var kia = "expires=" + d.toUTCString();
-  //console.log("Id:", id, "Name:", name, "Type:", type, "Was Clicked");
-  const cookieValue = document.cookie.split('; ').find((row) => row.startsWith('watchId='))?.split('=')[1];
-  const cookiequality = document.cookie.split('; ').find((row) => row.startsWith('quality='))?.split('=')[1];
+  console.log("Id:", id, "Name:", name, "Type:", type, "Was Clicked");
+  const cookiequality = 2;
   updateQuality(cookiequality);
-  if (parseInt(cookieValue) === id) {
+  if (parseInt(window.cookieValue) === id) {
+    console.log('Matches!');
     document.getElementById("tababout").checked = false;
     document.getElementById("tabhome").checked = false;
     document.getElementById("tabchannels").checked = false;
@@ -1142,7 +657,8 @@ function cardclicked(id, name, type) {
     document.getElementById("tabsearch").checked = false;
     document.getElementById("tabwatch").checked = true;
   } else {
-    //console.log('Else');
+    window.cookieValue = id;
+    console.log('Else');
     updatewatchIdAndEtc(id, type, name);
 
     //Here Right above we will add in the updateRecommendedAndSimilar
@@ -1152,10 +668,8 @@ function cardclicked(id, name, type) {
     if (type === "tv") {
       document.getElementById("seasoncontainer").removeAttribute('style');
       document.getElementById("episodecontainer").removeAttribute('style');
-      //console.log('Is a TV SHOW!');
-      //Package the History Check right Here be the optimal spot!
-      document.cookie = "season=" + 1 + "; SameSite=strict; Secure; " + kia;
-      document.cookie = "episode=" + 1 + "; SameSite=strict; Secure; " + kia;
+      window.episodeG = 1;
+      window.seasonG = 1;
       fetch(`https://api.themoviedb.org/3/tv/${id}?language=en-US&append_to_response=external_ids`, {
         method: 'GET',
         headers: {
@@ -1176,22 +690,17 @@ function cardclicked(id, name, type) {
               objlist.push(obj);
             }
           }
-          mkDir(id, name, "tvshow", objlist);
-          //makeDirs(id, convertTitle2foldername(name), "tvshow", objlist);
           updateTvContainer();
+          updateRecommendedAndSimilar();
         }).catch(e => {
           console.log(e);
         });
-      //updateTvContainer();
-      //updateRecommendedAndSimilar();
-      //}
     } else {
-      mkDir(id, name, "movie");
-      //makeDirs(id, convertTitle2foldername(name), "movie");
+      console.log('The Card that was clicked is not a Tv Show so we will start movie container!');
       updateMovieContainer();
+      updateRecommendedAndSimilar();
       document.getElementById("seasoncontainer").setAttribute('style', 'display: none;');
       document.getElementById("episodecontainer").setAttribute('style', 'display: none;');
-      //updateRecommendedAndSimilar();
     }
     document.getElementById("tababout").checked = false;
     document.getElementById("tabhome").checked = false;

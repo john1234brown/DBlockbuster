@@ -1,10 +1,9 @@
-
 function convertTitle2foldername(b) {
-    //console.log('Before:', s);
-    var a = b.toString().toLowerCase();
-    a = a.replaceAll(' ', '');
-    a = a.replace(/[\W_]+/g, "");
-    return a;
+  //console.log('Before:', s);
+  var a = b.toString().toLowerCase();
+  a = a.replaceAll(' ', '');
+  a = a.replace(/[\W_]+/g, "");
+  return a;
 }
 
 async function post(obj) {
@@ -24,8 +23,11 @@ async function post(obj) {
 //CREATE ARRAY OF OBJS FROM THE FOR LOOP OF FILES AND SEND THIS TO THE LOCALHOST AND HAVE THE NODE APPLICATION LOOP THROUGH THEM
 //AND EXECUTE THE WORKERS FROM THE LIST OF ARRAY OF ITEMS DONT FORGET TO UPDATE THE WORKERS TO USE THE browserIndex Object located in the main OBJECT being posted!
 
-document.addEventListener('drop', (event) => {
+window.onload = function () {
+document.body.addEventListener('drop', (event) => {
+  console.log('Event Fired Off Drop event!');
     if (document.getElementById('tabwatch').checked){
+      console.log('watch tab is checked successfully passed!', event);
         if (document.cookie.split('; ').find((row) => row.startsWith('browserIndex='))?.split('=')[1]){
             var browserRepoIndex = parseInt(document.cookie.split('; ').find((row) => row.startsWith('browserIndex='))?.split('=')[1]);
             //console.log('From Electrons Script Testing!', configjson);
@@ -126,22 +128,23 @@ document.addEventListener('drop', (event) => {
 
 
  
-document.addEventListener('dragover', (e) => {
-    if (document.getElementById('tabwatch').checked){
-    e.preventDefault();
-    e.stopPropagation();
+document.body.addEventListener('dragover', (e) => {
+    if (document.body.getElementById('tabwatch').checked){
+    //e.preventDefault();
+    //e.stopPropagation();
     }else{
-    e.preventDefault;
-    e.stopPropagation();
-    return;
+    //e.preventDefault;
+    //e.stopPropagation();
+    //return;
     }
   });
  
-document.addEventListener('dragenter', (event) => {
-    //console.log('File is in the Drop Space');
+document.body.addEventListener('dragenter', (event) => {
+    console.log('File is in the Drop Space');
 });
  
-document.addEventListener('dragleave', (event) => {
-    //console.log('File has left the Drop Space');
+document.body.addEventListener('dragleave', (event) => {
+    console.log('File has left the Drop Space');
 });
 
+}
